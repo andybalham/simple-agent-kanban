@@ -1,0 +1,296 @@
+# Implementation Plan
+
+## Guiding Principle
+
+Build the MCP contract first, then build the HTTP API and React UI on top of the same domain services.
+
+The app should be useful to agents before it is visually complete. The UI should make agent activity visible, explainable, and easy for the human to override.
+
+## Phase 0: Project Foundation
+
+Goal: create a clean local development base.
+
+Tasks:
+
+- Choose package manager and app layout.
+- Initialize Node/TypeScript project.
+- Add linting, formatting, and test runner.
+- Add React app shell.
+- Add Node server shell.
+- Add MCP server entrypoint shell.
+- Add shared `core` and `db` boundaries.
+- Add local environment configuration.
+
+Deliverables:
+
+- App starts locally.
+- Server has health endpoint.
+- MCP entrypoint can start and expose a basic `ping` tool.
+- Tests can run.
+
+Exit criteria:
+
+- `npm install`, `npm run dev`, and `npm test` or equivalents work.
+- Project structure supports web, server, MCP, core, and db code without circular dependencies.
+
+## Phase 1: MCP Contract and Domain Model
+
+Goal: define the agent-facing workflow before building UI behavior around it.
+
+Tasks:
+
+- Define TypeScript domain types for projects, tasks, claims, events, artifacts, and verification.
+- Define input/output schemas for MCP tools.
+- Implement validation for task creation, task splitting, claims, completion, and verification.
+- Write service interfaces for project, task, claim, event, and artifact workflows.
+- Add tests for allowed and rejected state transitions.
+
+Initial MCP tools:
+
+- `list_projects`
+- `create_project`
+- `get_project_context`
+- `update_project_context`
+- `list_tasks`
+- `create_task`
+- `split_task`
+- `claim_task`
+- `heartbeat_claim`
+- `release_claim`
+- `update_task_status`
+- `add_task_note`
+- `record_artifact`
+- `record_verification`
+- `request_review`
+- `complete_task`
+
+Important decisions to encode:
+
+- Agents are trusted to create tasks.
+- Split tasks remain flat.
+- Split originals are removed from active board flow.
+- Claims are temporary leases.
+- Claim state is separate from task status.
+- Completion requires summary and verification evidence.
+- Significant actions create events.
+
+Deliverables:
+
+- MCP schemas documented in code.
+- Domain services can be exercised in memory or against a temporary repository.
+- Tests cover task splitting, claiming, stale claims, status updates, and completion.
+
+Exit criteria:
+
+- The MCP tool contract is stable enough that agents could integrate against it.
+- No UI-specific assumptions leak into MCP response shapes.
+
+## Phase 2: SQLite Persistence
+
+Goal: make the domain durable using SQLite with a Postgres-friendly boundary.
+
+Tasks:
+
+- Choose database toolkit.
+- Create migrations.
+- Implement tables for projects, tasks, claims, events, artifacts, and verification.
+- Implement repository interfaces.
+- Wire domain services to SQLite repositories.
+- Add seed data for local development.
+- Add tests against a temporary SQLite database.
+
+Recommended tables:
+
+- `projects`
+- `project_contexts`
+- `tasks`
+- `task_claims`
+- `task_events`
+- `task_artifacts`
+- `task_verifications`
+
+Deliverables:
+
+- Local SQLite database is created through migrations.
+- Domain service tests pass against SQLite.
+- Event writing is transactional with the state change it describes.
+
+Exit criteria:
+
+- A project can be created, populated with context, given tasks, claimed by an agent, updated, split, and completed durably.
+- Database-specific code is isolated in `db` or repository modules.
+
+## Phase 3: MCP Server Implementation
+
+Goal: expose the real durable workflows to agents.
+
+Tasks:
+
+- Connect MCP tools to domain services.
+- Return structured tool results with clear success/error shapes.
+- Add friendly validation errors for agents.
+- Add MCP-level tests or scripted smoke tests.
+- Document local MCP server configuration.
+
+Deliverables:
+
+- Agents can list projects, read context, create tasks, claim tasks, split tasks, record work, and complete tasks.
+- MCP tool results include IDs and current state needed for follow-up calls.
+
+Exit criteria:
+
+- A scripted agent workflow can run end to end through MCP only:
+  1. Create project.
+  2. Update project context.
+  3. Create task.
+  4. Claim task.
+  5. Record artifact.
+  6. Record verification.
+  7. Complete task.
+
+## Phase 4: Local HTTP API
+
+Goal: expose the same workflows to the React UI without duplicating business logic.
+
+Tasks:
+
+- Add HTTP routes for projects, context, tasks, claims, events, artifacts, and verification.
+- Reuse domain services for all mutations.
+- Add API validation using the same schemas where practical.
+- Add integration tests for key routes.
+- Add error handling and structured response conventions.
+
+Deliverables:
+
+- Local HTTP API supports the UI workflows.
+- API can fetch board state, task details, active claims, stale claims, and activity.
+
+Exit criteria:
+
+- Board state returned by HTTP matches state produced by MCP workflows.
+- Claim release and task status updates through HTTP write the same event types as MCP actions.
+
+## Phase 5: React Board UI
+
+Goal: give the human a useful visual control surface.
+
+Tasks:
+
+- Build project selector.
+- Build Kanban board columns.
+- Build task cards with priority, labels, claim state, stale warning, and needs-grooming flag.
+- Build task detail drawer or panel.
+- Build drag/drop or explicit status move controls.
+- Build task create/edit forms.
+- Build claim release action.
+
+Deliverables:
+
+- Human can view and edit project tasks.
+- Human can see which tasks are claimed, stale, blocked, in review, or done.
+
+Exit criteria:
+
+- A task created by MCP appears in the UI.
+- A task moved in the UI is reflected through MCP `list_tasks`.
+- Stale claims are visibly distinct.
+
+## Phase 6: Project Context UI
+
+Goal: make project context easy for humans to maintain and agents to consume.
+
+Tasks:
+
+- Build project context editor.
+- Support Markdown fields for overview, agent instructions, and coding conventions.
+- Support structured fields for repo path and commands.
+- Show a preview of what agents receive from `get_project_context`.
+
+Deliverables:
+
+- Human can edit global project context.
+- Agents receive updated context through MCP.
+
+Exit criteria:
+
+- Context updates through UI are immediately visible through MCP.
+- Context updates write activity events.
+
+## Phase 7: Agent Activity and Review Visibility
+
+Goal: turn the UI from a board into an agent operations console.
+
+Tasks:
+
+- Build activity feed.
+- Build active claims panel.
+- Build stale claims panel.
+- Build review queue.
+- Show task artifacts and verification evidence.
+- Highlight agent-created tasks that need grooming.
+
+Deliverables:
+
+- Human can quickly answer: what are agents doing, what is blocked, what needs review, and what has gone stale?
+
+Exit criteria:
+
+- Claim heartbeats and stale claims are visible.
+- Review requests are easy to find.
+- Completion summaries and verification evidence are visible in task details.
+
+## Phase 8: Hardening and Local Polish
+
+Goal: make the app pleasant and reliable as a daily local tool.
+
+Tasks:
+
+- Add robust error states.
+- Add empty states.
+- Add loading states.
+- Add keyboard-friendly task workflows where useful.
+- Add database backup/export command.
+- Add import/export for project data if practical.
+- Add migration sanity checks.
+- Add documentation for local setup and agent configuration.
+
+Deliverables:
+
+- A developer can run the app locally, connect agents, and understand how to recover data.
+
+Exit criteria:
+
+- Fresh clone setup is documented and tested.
+- Existing SQLite database migrates cleanly.
+- Common agent workflow failures produce understandable errors.
+
+## Suggested Early Test Scenarios
+
+- Agent creates a task and human sees it on the board.
+- Agent splits a task into replacements and the original disappears from active columns.
+- Agent claims a task, heartbeats, and completes it.
+- Agent claim expires and another agent can reclaim the task.
+- Human releases a stale claim.
+- Agent records changed files, branch, commit, and test output.
+- Agent requests review with a summary.
+- Human edits project context and agent reads the new version.
+
+## Initial Build Order
+
+1. Define domain types and MCP schemas.
+2. Implement in-memory domain service tests.
+3. Add SQLite schema and repositories.
+4. Wire MCP tools to durable services.
+5. Add HTTP API over the same services.
+6. Build the minimal board UI.
+7. Add context editor.
+8. Add activity, claims, and review visibility.
+
+## Quality Bar
+
+- State transitions are tested.
+- Mutations write events.
+- MCP and HTTP share business logic.
+- SQLite access is isolated.
+- The UI exposes agent work clearly rather than hiding it behind generic Kanban behavior.
+- The system remains simple enough to run locally without operational ceremony.
