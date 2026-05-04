@@ -3,5 +3,7 @@ dist/
 coverage/
 .env
 *.log
+.dev-server.pid
+dev-server.*.log
 local.sqlite
 local.sqlite-*
