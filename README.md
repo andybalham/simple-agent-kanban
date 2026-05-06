@@ -16,9 +16,9 @@ Local Agent Kanban is an agent work console for a single developer working in on
 
 ## Current Status
 
-The repository is currently at **Phase 0: Project Foundation**.
+The repository is currently at **Phase 1 complete; Phase 2 next**.
 
-Implemented scaffold:
+Implemented foundation and domain contract:
 
 - React and Vite web app shell.
 - Node HTTP API shell with `/health` and `/api/health`.
@@ -27,6 +27,7 @@ Implemented scaffold:
 - TypeScript, ESLint, Prettier, and Vitest configuration.
 - Local environment example in `.env.example`.
 - Dependency-free Phase 0 scaffold check.
+- Domain types, MCP tool schemas, validation helpers, service interfaces, and in-memory workflow tests for Phase 1.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 

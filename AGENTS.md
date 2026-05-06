@@ -138,7 +138,7 @@ Current local ports:
 - TypeScript is used throughout.
 - The project uses ESM (`"type": "module"`).
 - Prefer explicit domain types and validation schemas for workflow boundaries.
-- Keep comments sparse and useful.
+- Keep implementation code self-documenting for learners. Add verbose, useful comments around domain rules, workflow invariants, validation decisions, and non-obvious control flow so new contributors can understand why the code behaves the way it does.
 - Preserve existing formatting; use Prettier for broad formatting changes.
 - Add focused tests for state transitions, validation failures, dependency handling, claim expiry/reclaiming, event writing, and completion requirements.
 
