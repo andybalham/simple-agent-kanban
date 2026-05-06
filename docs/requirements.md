@@ -11,7 +11,7 @@ The system is not a team SaaS board. It is an agent work console for a single de
 - Provide a React Kanban UI for viewing and editing project work.
 - Support multiple projects.
 - Let trusted coding agents create, claim, split, update, and complete tasks through MCP tools.
-- Store durable project, task, context, claim, artifact, and activity history.
+- Store durable project, task, task dependency, context, claim, artifact, and activity history.
 - Run as a plain local server opened in the browser.
 - Use SQLite initially while keeping the persistence layer ready for future Postgres support.
 - Treat the MCP contract as a first-class product interface, not an implementation detail.
@@ -38,6 +38,7 @@ The system is not a team SaaS board. It is an agent work console for a single de
 
 - Reads project context.
 - Lists available work.
+- Lists claimable work in dependency order.
 - Creates new tasks when needed.
 - Splits oversized tasks into smaller flat tasks.
 - Claims tasks with a lease.
@@ -94,6 +95,7 @@ Recommended fields:
 
 - `acceptance_criteria`
 - `labels`
+- `dependency_status`
 - `needs_grooming`
 - `source_task_id`
 - `split_reason`
@@ -109,6 +111,55 @@ Task statuses:
 - `review`
 - `done`
 - `archived`
+
+Task priorities:
+
+- `low`
+- `medium`
+- `high`
+- `urgent`
+
+Labels are free-form strings. The system may suggest common labels such as `frontend`, `backend`, `db`, `mcp`, `docs`, `test`, `bug`, `feature`, and `refactor`, but V1 should not require a fixed label taxonomy.
+
+Task dependency status:
+
+- `unblocked`
+- `blocked_by_tasks`
+- `blocked_external`
+
+A task is agent-claimable only when its task status is `ready`, it has no active unexpired claim, and all prerequisite task dependencies are complete. A task can be `ready` but still not claimable if it is waiting on another task; this lets humans plan future work without making it available to agents too early.
+
+### Task Dependency
+
+Task dependencies represent ordering constraints between flat tasks in the same project.
+
+Required fields:
+
+- `id`
+- `project_id`
+- `task_id`
+- `depends_on_task_id`
+- `created_by`
+- `created_at`
+
+Dependency rules:
+
+- Dependencies must be between tasks in the same project.
+- Dependencies must form a directed acyclic graph; cycles are invalid.
+- A task may depend on multiple prerequisite tasks.
+- Multiple tasks may depend on the same prerequisite task.
+- A dependency is satisfied when `depends_on_task_id` reaches `done`.
+- Archived tasks must not remain active blockers; before archiving a blocking task, its dependents must be completed, rewired to replacement tasks, or explicitly marked `blocked_external`.
+- Splitting a task must preserve ordering constraints by moving dependencies from the original task to the replacement tasks where appropriate.
+- Agents should receive dependency information when listing or reading tasks so they can choose work in execution order.
+
+Recommended dependency behavior:
+
+- `list_tasks` should include each task's prerequisite task IDs, dependent task IDs, and derived dependency status.
+- Work selection should prioritize claimable tasks whose dependencies are already satisfied.
+- Blocked tasks should explain which prerequisite task IDs and titles are still incomplete.
+- Human users may add, remove, or reorder task dependencies through the UI.
+- Dependency changes should write immutable activity events.
 
 Task splitting must keep the board flat. When an agent splits a task, the original task should be replaced by the new tasks rather than becoming a parent container.
 
@@ -151,6 +202,9 @@ Recommended event types:
 - `project.created`
 - `project.context_updated`
 - `task.created`
+- `task.dependency_added`
+- `task.dependency_removed`
+- `task.dependency_rewired`
 - `task.split`
 - `task.claimed`
 - `task.heartbeat`
@@ -213,6 +267,7 @@ V1 tools:
 - `update_project_context`
 - `list_tasks`
 - `create_task`
+- `update_task_dependencies`
 - `split_task`
 - `claim_task`
 - `heartbeat_claim`
@@ -231,9 +286,15 @@ Important MCP behavior:
 - Agent-created tasks are allowed.
 - Agent-created tasks should be marked with the creating agent identity.
 - Agent-created tasks should default to `needs_grooming = true` unless explicitly created as part of an accepted split or completion workflow.
+- Human-created tasks should default to `needs_grooming = false`.
+- Agent-created tasks may declare prerequisite task IDs; invalid cross-project dependencies and dependency cycles must be rejected.
+- `list_tasks` must expose dependency status and should support filtering to claimable tasks so agents can process work in order.
+- `claim_task` must reject tasks with incomplete prerequisite dependencies unless a human override or explicit blocked workflow is used.
+- `update_task_dependencies` must validate same-project dependencies, reject cycles, and write dependency events.
 - `split_task` must require a reason and at least two replacement tasks.
+- `split_task` must require dependency handling instructions when the original task has prerequisites or dependents.
 - `complete_task` must require a summary and verification evidence.
-- Task status changes, notes, artifacts, verification, claim changes, and splits must write events.
+- Task status changes, dependency changes, notes, artifacts, verification, claim changes, and splits must write events.
 
 ## HTTP API Requirements
 
@@ -244,12 +305,13 @@ The HTTP API should support:
 - Project CRUD.
 - Project context editing.
 - Task CRUD.
+- Task dependency CRUD and dependency graph queries.
 - Drag/drop task status changes.
 - Claim visibility and release.
 - Event/activity feed queries.
 - Artifact and verification display.
 
-The HTTP API and MCP server must not duplicate business logic. Shared services should enforce validation, state transitions, claims, and event creation.
+The HTTP API and MCP server must not duplicate business logic. Shared services should enforce validation, dependency rules, state transitions, claims, and event creation.
 
 ## UI Requirements
 
@@ -274,11 +336,15 @@ Board columns:
 - Review
 - Done
 
+The Done column should remain visible on the board by default for V1. Completed tasks may still be archived manually, but completion should not automatically remove them from the main board.
+
 Task cards should show:
 
 - Title.
 - Priority.
 - Labels.
+- Dependency status.
+- Blocking prerequisite count.
 - Claim/agent indicator.
 - Stale claim warning.
 - Needs grooming flag.
@@ -289,6 +355,8 @@ Task detail should show:
 - Description.
 - Acceptance criteria.
 - Status.
+- Prerequisite tasks.
+- Dependent tasks.
 - Claim state.
 - Notes.
 - Artifacts.
@@ -306,12 +374,11 @@ Persistence must be structured so Postgres can be introduced later:
 - Keep schema and repository/data-access code isolated.
 - Prefer data types and query patterns that can map cleanly to Postgres.
 - Treat JSON fields as metadata escape hatches, not as the primary model.
+- Store task dependencies in a relational table, not only in task metadata JSON.
 
-Recommended implementation options:
+Database toolkit:
 
-- Drizzle ORM for typed SQL and migrations.
-- Kysely for SQL-shaped query building.
-- Prisma if faster schema iteration is preferred over lower-level SQL control.
+- Use Drizzle ORM for typed SQL, migrations, SQLite support, and future Postgres readiness.
 
 ## Architecture Requirements
 
@@ -343,18 +410,35 @@ Required architectural boundary:
 - Domain services call repositories.
 - Repositories own database access.
 
+Runtime boundary:
+
+- The HTTP API and React dev server may run together for local development.
+- The MCP server should run as a separate local process with its own entrypoint.
+- The separate MCP process must use the same shared domain services and repository layer as the HTTP API.
+
+## Implementation Planning Requirements
+
+The suggested design must track dependencies between major tasks so the build order is unambiguous. A phased implementation is preferred, with each phase naming:
+
+- The prerequisite phases or decisions it depends on.
+- The tasks that can be done in parallel.
+- The tasks that must be completed before later phases can start.
+- Exit criteria that prove the next phase is not blocked by missing foundations.
+
+At minimum, the plan should make these dependencies clear:
+
+- Project foundation precedes domain, persistence, MCP, HTTP, and UI work.
+- Domain types, validation, and service contracts precede durable persistence and API wiring.
+- SQLite schema and repositories precede durable MCP and HTTP workflows.
+- MCP and HTTP both depend on shared domain services rather than duplicating business logic.
+- The React UI depends on the HTTP API for board state, task details, claims, events, artifacts, and verification.
+- Activity, claims, and review views depend on events, claims, artifacts, and verification being recorded consistently by MCP and HTTP workflows.
+- Agent work ordering depends on task-level dependencies being available in MCP and HTTP task responses, enforced during claim validation, and visible in the UI.
+
 ## Local Runtime Requirements
 
 - The app runs as a plain local server.
 - The human opens the UI in a browser.
-- Agents connect to the MCP server locally.
+- Agents connect to the separate MCP server process locally.
 - V1 assumes one local workspace.
 - V1 does not need login.
-
-## Open Questions
-
-- Which database toolkit should be used: Drizzle, Kysely, Prisma, or another option?
-- Should the MCP server run as a separate process or inside the same Node process with a separate entrypoint?
-- What default task priorities and label conventions should be supported?
-- Should completed tasks stay visible on the board by default or move into an archive view?
-- Should human-created tasks default to `needs_grooming = false`?

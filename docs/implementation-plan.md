@@ -6,9 +6,33 @@ Build the MCP contract first, then build the HTTP API and React UI on top of the
 
 The app should be useful to agents before it is visually complete. The UI should make agent activity visible, explainable, and easy for the human to override.
 
+## Dependency Map
+
+The phases are ordered by dependency, not just preference:
+
+1. **Foundation** must exist before feature work: project layout, TypeScript, test runner, React shell, server shell, MCP shell, and shared `core`/`db` boundaries.
+2. **Domain and MCP contract** must define the workflow rules before persistence, HTTP, or UI code can safely depend on them.
+3. **SQLite persistence** depends on the domain model and repository contracts, then makes the workflows durable.
+4. **MCP server implementation** depends on durable domain services so agents exercise the real workflow.
+5. **HTTP API** depends on the same durable domain services so the UI and MCP stay behaviorally consistent.
+6. **React board UI** depends on HTTP board/task/claim endpoints.
+7. **Project context UI** depends on project context persistence and HTTP context endpoints.
+8. **Activity and review visibility** depends on events, claims, artifacts, and verification being written by earlier MCP and HTTP workflows.
+9. **Hardening and polish** depends on the core local workflow being usable end to end.
+
+Parallel work is allowed inside a phase only when it does not bypass these dependencies. For example, UI shell components can be sketched during API work, but they should not define business rules that belong in domain services.
+
 ## Phase 0: Project Foundation
 
 Goal: create a clean local development base.
+
+Depends on:
+
+- No earlier implementation phase.
+
+Unblocks:
+
+- Domain modeling, persistence setup, MCP implementation, HTTP API, and UI work.
 
 Tasks:
 
@@ -17,7 +41,7 @@ Tasks:
 - Add linting, formatting, and test runner.
 - Add React app shell.
 - Add Node server shell.
-- Add MCP server entrypoint shell.
+- Add separate MCP server entrypoint shell.
 - Add shared `core` and `db` boundaries.
 - Add local environment configuration.
 
@@ -25,7 +49,7 @@ Deliverables:
 
 - App starts locally.
 - Server has health endpoint.
-- MCP entrypoint can start and expose a basic `ping` tool.
+- Separate MCP entrypoint can start and expose a basic `ping` tool.
 - Tests can run.
 
 Exit criteria:
@@ -37,9 +61,22 @@ Exit criteria:
 
 Goal: define the agent-facing workflow before building UI behavior around it.
 
+Depends on:
+
+- Phase 0 project structure, test runner, and `core` boundary.
+
+Unblocks:
+
+- SQLite schema/repository design.
+- Durable MCP implementation.
+- HTTP validation and route behavior.
+- UI state semantics.
+
 Tasks:
 
 - Define TypeScript domain types for projects, tasks, claims, events, artifacts, and verification.
+- Define named task priorities: `low`, `medium`, `high`, and `urgent`.
+- Define labels as free-form strings with optional suggested labels.
 - Define input/output schemas for MCP tools.
 - Implement validation for task creation, task splitting, claims, completion, and verification.
 - Write service interfaces for project, task, claim, event, and artifact workflows.
@@ -67,6 +104,8 @@ Initial MCP tools:
 Important decisions to encode:
 
 - Agents are trusted to create tasks.
+- Human-created tasks default to `needs_grooming = false`.
+- Agent-created tasks default to `needs_grooming = true` unless created through an accepted split or completion workflow.
 - Split tasks remain flat.
 - Split originals are removed from active board flow.
 - Claims are temporary leases.
@@ -89,10 +128,20 @@ Exit criteria:
 
 Goal: make the domain durable using SQLite with a Postgres-friendly boundary.
 
+Depends on:
+
+- Phase 1 domain types, validation rules, service interfaces, and event requirements.
+
+Unblocks:
+
+- Durable MCP workflows.
+- Durable HTTP workflows.
+- UI state backed by persisted project data.
+
 Tasks:
 
-- Choose database toolkit.
-- Create migrations.
+- Add Drizzle ORM.
+- Create Drizzle migrations.
 - Implement tables for projects, tasks, claims, events, artifacts, and verification.
 - Implement repository interfaces.
 - Wire domain services to SQLite repositories.
@@ -111,7 +160,7 @@ Recommended tables:
 
 Deliverables:
 
-- Local SQLite database is created through migrations.
+- Local SQLite database is created through Drizzle migrations.
 - Domain service tests pass against SQLite.
 - Event writing is transactional with the state change it describes.
 
@@ -124,8 +173,19 @@ Exit criteria:
 
 Goal: expose the real durable workflows to agents.
 
+Depends on:
+
+- Phase 1 MCP schemas and workflow rules.
+- Phase 2 SQLite-backed services and repositories.
+
+Unblocks:
+
+- End-to-end agent workflow validation.
+- HTTP/UI consistency checks against agent-created state.
+
 Tasks:
 
+- Keep MCP running as a separate local process with its own entrypoint.
 - Connect MCP tools to domain services.
 - Return structured tool results with clear success/error shapes.
 - Add friendly validation errors for agents.
@@ -134,6 +194,7 @@ Tasks:
 
 Deliverables:
 
+- MCP server runs independently from the HTTP API while sharing domain and database layers.
 - Agents can list projects, read context, create tasks, claim tasks, split tasks, record work, and complete tasks.
 - MCP tool results include IDs and current state needed for follow-up calls.
 
@@ -151,6 +212,18 @@ Exit criteria:
 ## Phase 4: Local HTTP API
 
 Goal: expose the same workflows to the React UI without duplicating business logic.
+
+Depends on:
+
+- Phase 1 shared domain services and validation.
+- Phase 2 durable repositories.
+- Phase 3 MCP behavior as a reference for workflow parity.
+
+Unblocks:
+
+- React board UI.
+- Project context UI.
+- Activity, claims, artifacts, verification, and review views.
 
 Tasks:
 
@@ -174,11 +247,20 @@ Exit criteria:
 
 Goal: give the human a useful visual control surface.
 
+Depends on:
+
+- Phase 4 HTTP endpoints for projects, tasks, claims, and status updates.
+
+Unblocks:
+
+- Context editing in the same UI shell.
+- Review and activity surfaces that link back to tasks.
+
 Tasks:
 
 - Build project selector.
-- Build Kanban board columns.
-- Build task cards with priority, labels, claim state, stale warning, and needs-grooming flag.
+- Build Kanban board columns, including Done visible by default.
+- Build task cards with named priority, free-form labels, claim state, stale warning, and needs-grooming flag.
 - Build task detail drawer or panel.
 - Build drag/drop or explicit status move controls.
 - Build task create/edit forms.
@@ -188,6 +270,7 @@ Deliverables:
 
 - Human can view and edit project tasks.
 - Human can see which tasks are claimed, stale, blocked, in review, or done.
+- Completed tasks remain visible in the Done column by default for V1.
 
 Exit criteria:
 
@@ -198,6 +281,16 @@ Exit criteria:
 ## Phase 6: Project Context UI
 
 Goal: make project context easy for humans to maintain and agents to consume.
+
+Depends on:
+
+- Phase 4 HTTP endpoints for project context.
+- Phase 5 project selector or equivalent UI navigation.
+
+Unblocks:
+
+- Agent-facing context review from the UI.
+- Activity visibility for context changes.
 
 Tasks:
 
@@ -219,6 +312,18 @@ Exit criteria:
 ## Phase 7: Agent Activity and Review Visibility
 
 Goal: turn the UI from a board into an agent operations console.
+
+Depends on:
+
+- Phase 2 event, claim, artifact, and verification persistence.
+- Phase 3 MCP workflows writing those records.
+- Phase 4 HTTP query endpoints for those records.
+- Phase 5 task detail UI surfaces to display linked records.
+
+Unblocks:
+
+- Human operational review of agent work.
+- Hardening around stale claims, blocked work, and review queues.
 
 Tasks:
 
@@ -242,6 +347,14 @@ Exit criteria:
 ## Phase 8: Hardening and Local Polish
 
 Goal: make the app pleasant and reliable as a daily local tool.
+
+Depends on:
+
+- Phases 0-7 providing a complete local workflow.
+
+Unblocks:
+
+- Daily local use with setup, recovery, migration, and error handling documented.
 
 Tasks:
 
