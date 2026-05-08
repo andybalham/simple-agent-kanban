@@ -29,6 +29,7 @@ import type {
   ListTasksInput,
   LocalAgentKanbanService,
   SplitTaskInput,
+  UpdateTaskInput,
 } from '../core/services.ts';
 import {
   createTaskBaseSchema,
@@ -37,6 +38,7 @@ import {
   projectContextInputSchema,
   replacementTaskSchema,
   taskStatusSchema,
+  updateTaskBaseSchema,
   verificationEvidenceSchema,
 } from '../core/validation.ts';
 import * as schema from './schema.ts';
@@ -303,6 +305,22 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
       this.replaceDependencies(input.actor, task.id, parsed.prerequisiteTaskIds);
       this.writeEvent(input.actor, task.projectId, task.id, 'task.created', `Task created: ${task.title}`, {});
       return this.withRelations(this.requireTask(task.id));
+    });
+  }
+
+  updateTask(actor: Actor, taskId: string, input: UpdateTaskInput): TaskWithRelations {
+    return this.transaction(() => {
+      const current = this.requireTask(taskId);
+      const parsed = updateTaskBaseSchema.parse(input);
+      const updated = this.touchTask(taskId, {
+        ...parsed,
+        labels: parsed.labels ? [...new Set(parsed.labels)] : current.labels,
+        acceptanceCriteria: parsed.acceptanceCriteria ?? current.acceptanceCriteria,
+      });
+      this.writeEvent(actor, updated.projectId, taskId, 'task.updated', `Task updated: ${updated.title}`, {
+        fields: Object.keys(parsed),
+      });
+      return this.withRelations(updated);
     });
   }
 

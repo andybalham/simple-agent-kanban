@@ -88,6 +88,17 @@ export const createTaskBaseSchema = z.object({
   needsGrooming: z.boolean().optional(),
 });
 
+export const updateTaskBaseSchema = createTaskBaseSchema
+  .omit({
+    projectId: true,
+    status: true,
+    prerequisiteTaskIds: true,
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one task field must be provided.',
+  });
+
 /**
  * Replacement tasks are created by split_task. They inherit the original project
  * and source metadata from the split workflow, so callers provide only the new

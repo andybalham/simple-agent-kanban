@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 4 complete; Phase 5 next**
+Current phase: **Phase 5 complete; Phase 6 next**
 
-Phase 4 is complete. The next implementation work is to build the React board UI on top of the local HTTP API.
+Phase 5 is complete. The next implementation work is to add the project context UI on top of the existing context endpoints.
 
 ## Phase Tracker
 
@@ -17,7 +17,7 @@ Phase 4 is complete. The next implementation work is to build the React board UI
 | 2 | SQLite Persistence | Complete | Added Drizzle schema, SQLite migration SQL, durable service/repository implementation, seed data helper, and SQLite workflow tests with transaction rollback coverage. |
 | 3 | MCP Server Implementation | Complete | MCP tools now call the SQLite-backed service and an end-to-end stdio smoke test covers the required agent workflow. |
 | 4 | Local HTTP API | Complete | Added HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
-| 5 | React Board UI | Pending | Build the operational Kanban board, task detail surface, task create/edit flows, status updates, and claim release action. |
+| 5 | React Board UI | Complete | Built the operational Kanban board, project selector, task detail surface, task create/edit flows, status updates, claim release action, and stale claim indicators. |
 | 6 | Project Context UI | Pending | Add context editing for overview, agent instructions, repo metadata, commands, and coding conventions. |
 | 7 | Agent Activity and Review Visibility | Pending | Add activity feed, active/stale claims panels, review queue, artifacts, verification evidence, and grooming indicators. |
 | 8 | Hardening and Local Polish | Pending | Add robust empty/loading/error states, backup/export support, migration checks, recovery docs, and local workflow polish. |
@@ -129,8 +129,35 @@ Last verified: 2026-05-08.
 
 ## Next Phase Exit Criteria
 
-Phase 5 is complete when:
+Phase 6 is complete when:
 
-- A task created by MCP appears in the UI.
-- A task moved in the UI is reflected through MCP `list_tasks`.
-- Stale claims are visibly distinct.
+- Context updates through UI are immediately visible through MCP.
+- Context updates write activity events.
+
+## Phase 5 Evidence
+
+Phase 5 deliverables present:
+
+- `src/web/App.tsx` now loads projects, tasks, claims, task detail, artifacts, verification, and recent task events from the local HTTP API.
+- The UI includes a project selector, project creation, visible Kanban columns including Done, task cards with priority, labels, active claim, stale claim, blocker, and needs-grooming indicators.
+- The side panel includes task creation, task editing, task detail evidence, and claim release controls.
+- Board status moves call the shared HTTP status route, while task edits call a new shared `updateTask` service workflow through `PATCH /api/tasks/:taskId`.
+- `src/core/services.ts`, `src/core/memoryService.ts`, `src/db/sqliteService.ts`, and `src/server/httpServer.ts` include the narrow task edit workflow used by the UI.
+- `src/server/httpServer.test.ts` covers the task edit route and verifies that it updates the shared service read model and writes `task.updated`.
+
+Phase 5 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+```
+
+Browser smoke test:
+
+- Created a project through the UI.
+- Created a task through the UI.
+- Moved the task from Backlog to Ready through the board move control.
+
+Last verified: 2026-05-08.

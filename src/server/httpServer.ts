@@ -10,6 +10,7 @@ import {
   mcpToolSchemas,
   projectContextInputSchema,
   taskStatusSchema,
+  updateTaskBaseSchema,
   type LocalAgentKanbanService,
   type TaskWithRelations,
 } from '../core/index.ts';
@@ -190,6 +191,13 @@ async function routeTaskRequest(
       verifications: service.listVerifications(taskId),
       events: service.listEvents(task.projectId).filter((event) => event.taskId === taskId),
     });
+    return;
+  }
+
+  if (request.method === 'PATCH' && rest.length === 0) {
+    const body = z.object({ actor: actorSchema, task: updateTaskBaseSchema }).parse(await readJson(request));
+    const task = service.updateTask(body.actor, taskId, body.task);
+    sendJson(response, 200, { ok: true, task });
     return;
   }
 

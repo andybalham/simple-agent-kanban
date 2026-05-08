@@ -174,6 +174,7 @@ export const eventTypes = [
   'project.created',
   'project.context_updated',
   'task.created',
+  'task.updated',
   'task.dependency_added',
   'task.dependency_removed',
   'task.dependency_rewired',

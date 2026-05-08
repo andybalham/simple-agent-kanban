@@ -44,6 +44,10 @@ export type CreateTaskInput = {
   needsGrooming?: boolean;
 };
 
+export type UpdateTaskInput = Partial<
+  Pick<CreateTaskInput, 'title' | 'description' | 'acceptanceCriteria' | 'priority' | 'labels' | 'needsGrooming'>
+>;
+
 /**
  * now is injectable for claimability queries so tests and future deterministic
  * adapters can evaluate stale claims without waiting for real time to pass.
@@ -105,6 +109,7 @@ export type ProjectWorkflow = {
 export type TaskWorkflow = {
   listTasks(input?: ListTasksInput): TaskWithRelations[];
   createTask(input: CreateTaskInput): TaskWithRelations;
+  updateTask(actor: Actor, taskId: string, input: UpdateTaskInput): TaskWithRelations;
   updateTaskDependencies(actor: Actor, taskId: string, prerequisiteTaskIds: string[]): TaskWithRelations;
   splitTask(input: SplitTaskInput): { archivedTask: Task; replacementTasks: TaskWithRelations[] };
   updateTaskStatus(actor: Actor, taskId: string, status: TaskStatus): TaskWithRelations;

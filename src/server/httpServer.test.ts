@@ -113,6 +113,37 @@ describe('HTTP API workflow', () => {
       expect.arrayContaining(['task.claimed', 'task.claim_released']),
     );
   });
+
+  it('updates editable task fields through the shared service', async () => {
+    const { service, baseUrl } = await startApi();
+    const project = await api(baseUrl, 'POST', '/api/projects', { actor: human, name: 'Edit Project' });
+    const projectId = stringField(objectField(project, 'project'), 'id');
+    const created = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: human,
+      title: 'Draft task',
+      status: 'ready',
+    });
+    const taskId = stringField(objectField(created, 'task'), 'id');
+
+    const updated = await api(baseUrl, 'PATCH', `/api/tasks/${taskId}`, {
+      actor: human,
+      task: {
+        title: 'Edited task',
+        priority: 'high',
+        labels: ['frontend', 'ui'],
+        acceptanceCriteria: ['Edits persist'],
+      },
+    });
+
+    const updatedTask = objectField(updated, 'task');
+    expect(updatedTask.title).toBe('Edited task');
+    expect(updatedTask.priority).toBe('high');
+    expect(updatedTask.labels).toEqual(['frontend', 'ui']);
+    expect(service.listTasks({ projectId }).find((task) => task.id === taskId)?.title).toBe('Edited task');
+
+    const events = await api(baseUrl, 'GET', `/api/projects/${projectId}/events`);
+    expect((arrayField(events, 'events') as JsonObject[]).map((event) => event.eventType)).toContain('task.updated');
+  });
 });
 
 async function startApi(): Promise<{ service: LocalAgentKanbanService; baseUrl: string }> {
