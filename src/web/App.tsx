@@ -15,6 +15,21 @@ type Project = {
   lifecycleStatus: 'active' | 'completed';
 };
 
+type ProjectContext = {
+  projectId: string;
+  overviewMarkdown: string;
+  agentInstructionsMarkdown: string;
+  repoPath: string | null;
+  defaultBranch: string | null;
+  packageManager: string | null;
+  installCommand: string | null;
+  testCommand: string | null;
+  buildCommand: string | null;
+  lintCommand: string | null;
+  codingConventionsMarkdown: string;
+  updatedAt: string;
+};
+
 type TaskClaim = {
   id: string;
   taskId: string;
@@ -92,6 +107,19 @@ type CompletionFormState = {
   evidence: string;
 };
 
+type ProjectContextFormState = {
+  overviewMarkdown: string;
+  agentInstructionsMarkdown: string;
+  repoPath: string;
+  defaultBranch: string;
+  packageManager: string;
+  installCommand: string;
+  testCommand: string;
+  buildCommand: string;
+  lintCommand: string;
+  codingConventionsMarkdown: string;
+};
+
 const columns: Array<{ status: TaskStatus; label: string }> = [
   { status: 'backlog', label: 'Backlog' },
   { status: 'ready', label: 'Ready' },
@@ -120,9 +148,25 @@ const emptyCompletionForm: CompletionFormState = {
   evidence: '',
 };
 
+const emptyContextForm: ProjectContextFormState = {
+  overviewMarkdown: '',
+  agentInstructionsMarkdown: '',
+  repoPath: '',
+  defaultBranch: '',
+  packageManager: '',
+  installCommand: '',
+  testCommand: '',
+  buildCommand: '',
+  lintCommand: '',
+  codingConventionsMarkdown: '',
+};
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
+  const [contextForm, setContextForm] = useState<ProjectContextFormState>(emptyContextForm);
+  const [projectEvents, setProjectEvents] = useState<TaskEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [claims, setClaims] = useState<TaskClaim[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -144,6 +188,10 @@ export function App() {
   // columns or duplicating the service's workflow rules in React.
   const staleClaimIds = useMemo(() => new Set(claims.filter(isStaleClaim).map((claim) => claim.id)), [claims]);
   const staleClaimsByTask = useMemo(() => groupClaimsByTask(claims.filter(isStaleClaim)), [claims]);
+  const contextEvents = useMemo(
+    () => projectEvents.filter((event) => event.eventType === 'project.context_updated').slice(-3).reverse(),
+    [projectEvents],
+  );
 
   useEffect(() => {
     void loadProjects();
@@ -185,10 +233,15 @@ export function App() {
 
   useEffect(() => {
     if (!selectedProjectId) {
+      setProjectContext(null);
+      setContextForm(emptyContextForm);
+      setProjectEvents([]);
       setTasks([]);
       setClaims([]);
       return;
     }
+    void loadProjectContext(selectedProjectId);
+    void loadProjectEvents(selectedProjectId);
     void refreshBoard(selectedProjectId);
   }, [selectedProjectId, refreshBoard]);
 
@@ -212,6 +265,25 @@ export function App() {
     try {
       const data = await api<TaskDetail>(`/api/tasks/${taskId}`);
       setDetail(data);
+    } catch (apiError) {
+      setError(errorMessage(apiError));
+    }
+  }
+
+  async function loadProjectContext(projectId: string) {
+    try {
+      const data = await api<{ context: ProjectContext }>(`/api/projects/${projectId}/context`);
+      setProjectContext(data.context);
+      setContextForm(contextToForm(data.context));
+    } catch (apiError) {
+      setError(errorMessage(apiError));
+    }
+  }
+
+  async function loadProjectEvents(projectId: string) {
+    try {
+      const data = await api<{ events: TaskEvent[] }>(`/api/projects/${projectId}/events`);
+      setProjectEvents(data.events);
     } catch (apiError) {
       setError(errorMessage(apiError));
     }
@@ -309,6 +381,22 @@ export function App() {
       setCompletionForm(emptyCompletionForm);
       await refreshBoard();
       await loadTaskDetail(selectedTaskId);
+    });
+  }
+
+  async function saveProjectContext(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedProjectId) {
+      return;
+    }
+    await mutate(async () => {
+      const data = await api<{ context: ProjectContext }>(`/api/projects/${selectedProjectId}/context`, {
+        method: 'PUT',
+        body: JSON.stringify({ actor: humanActor, context: formToProjectContextPayload(contextForm) }),
+      });
+      setProjectContext(data.context);
+      setContextForm(contextToForm(data.context));
+      await loadProjectEvents(selectedProjectId);
     });
   }
 
@@ -421,6 +509,18 @@ export function App() {
 
         <aside className="side-panel" aria-label="Task controls">
           <section className="panel-section">
+            <h2>Project Context</h2>
+            <ProjectContextEditor
+              form={contextForm}
+              context={projectContext}
+              events={contextEvents}
+              disabled={!selectedProjectId || isSaving}
+              onChange={setContextForm}
+              onSubmit={saveProjectContext}
+            />
+          </section>
+
+          <section className="panel-section">
             <h2>Create Task</h2>
             <TaskForm
               form={createForm}
@@ -516,6 +616,124 @@ function TaskCard({
         </select>
       </label>
     </article>
+  );
+}
+
+function ProjectContextEditor({
+  form,
+  context,
+  events,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  form: ProjectContextFormState;
+  context: ProjectContext | null;
+  events: TaskEvent[];
+  disabled: boolean;
+  onChange: (form: ProjectContextFormState) => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  return (
+    <form className="context-form" onSubmit={onSubmit}>
+      <label className="field">
+        <span>Overview</span>
+        <textarea
+          value={form.overviewMarkdown}
+          onChange={(event) => onChange({ ...form, overviewMarkdown: event.target.value })}
+          placeholder="Markdown summary agents should read first"
+          rows={4}
+        />
+      </label>
+      <label className="field">
+        <span>Agent Instructions</span>
+        <textarea
+          value={form.agentInstructionsMarkdown}
+          onChange={(event) => onChange({ ...form, agentInstructionsMarkdown: event.target.value })}
+          placeholder="Repository workflow, expectations, and limits"
+          rows={4}
+        />
+      </label>
+      <div className="form-grid">
+        <label className="field">
+          <span>Repo Path</span>
+          <input value={form.repoPath} onChange={(event) => onChange({ ...form, repoPath: event.target.value })} />
+        </label>
+        <label className="field">
+          <span>Default Branch</span>
+          <input value={form.defaultBranch} onChange={(event) => onChange({ ...form, defaultBranch: event.target.value })} />
+        </label>
+      </div>
+      <div className="form-grid">
+        <label className="field">
+          <span>Package Manager</span>
+          <input value={form.packageManager} onChange={(event) => onChange({ ...form, packageManager: event.target.value })} />
+        </label>
+        <label className="field">
+          <span>Install Command</span>
+          <input value={form.installCommand} onChange={(event) => onChange({ ...form, installCommand: event.target.value })} />
+        </label>
+      </div>
+      <div className="form-grid">
+        <label className="field">
+          <span>Test Command</span>
+          <input value={form.testCommand} onChange={(event) => onChange({ ...form, testCommand: event.target.value })} />
+        </label>
+        <label className="field">
+          <span>Build Command</span>
+          <input value={form.buildCommand} onChange={(event) => onChange({ ...form, buildCommand: event.target.value })} />
+        </label>
+      </div>
+      <label className="field">
+        <span>Lint Command</span>
+        <input value={form.lintCommand} onChange={(event) => onChange({ ...form, lintCommand: event.target.value })} />
+      </label>
+      <label className="field">
+        <span>Coding Conventions</span>
+        <textarea
+          value={form.codingConventionsMarkdown}
+          onChange={(event) => onChange({ ...form, codingConventionsMarkdown: event.target.value })}
+          placeholder="Markdown conventions agents should preserve"
+          rows={4}
+        />
+      </label>
+      <button type="submit" disabled={disabled}>
+        Save Context
+      </button>
+      <AgentContextPreview context={context} />
+      <ContextActivity events={events} />
+    </form>
+  );
+}
+
+function AgentContextPreview({ context }: { context: ProjectContext | null }) {
+  if (!context) {
+    return <p className="panel-empty">Select a project to preview agent context.</p>;
+  }
+
+  return (
+    <div className="context-preview">
+      <h3>Agent Preview</h3>
+      <pre>{JSON.stringify(context, null, 2)}</pre>
+    </div>
+  );
+}
+
+function ContextActivity({ events }: { events: TaskEvent[] }) {
+  return (
+    <div className="context-activity">
+      <h3>Context Activity</h3>
+      {events.length === 0 ? (
+        <p className="panel-empty">No context updates recorded yet.</p>
+      ) : (
+        events.map((event) => (
+          <div className="event-row" key={event.id}>
+            <span>{formatDateTime(event.createdAt)}</span>
+            <strong>{event.message}</strong>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
 
@@ -733,6 +951,41 @@ function taskToForm(task: Task): TaskFormState {
   };
 }
 
+function contextToForm(context: ProjectContext): ProjectContextFormState {
+  return {
+    overviewMarkdown: context.overviewMarkdown,
+    agentInstructionsMarkdown: context.agentInstructionsMarkdown,
+    repoPath: context.repoPath ?? '',
+    defaultBranch: context.defaultBranch ?? '',
+    packageManager: context.packageManager ?? '',
+    installCommand: context.installCommand ?? '',
+    testCommand: context.testCommand ?? '',
+    buildCommand: context.buildCommand ?? '',
+    lintCommand: context.lintCommand ?? '',
+    codingConventionsMarkdown: context.codingConventionsMarkdown,
+  };
+}
+
+function formToProjectContextPayload(form: ProjectContextFormState): Omit<ProjectContext, 'projectId' | 'updatedAt'> {
+  return {
+    overviewMarkdown: form.overviewMarkdown,
+    agentInstructionsMarkdown: form.agentInstructionsMarkdown,
+    repoPath: nullableTrimmed(form.repoPath),
+    defaultBranch: nullableTrimmed(form.defaultBranch),
+    packageManager: nullableTrimmed(form.packageManager),
+    installCommand: nullableTrimmed(form.installCommand),
+    testCommand: nullableTrimmed(form.testCommand),
+    buildCommand: nullableTrimmed(form.buildCommand),
+    lintCommand: nullableTrimmed(form.lintCommand),
+    codingConventionsMarkdown: form.codingConventionsMarkdown,
+  };
+}
+
+function nullableTrimmed(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function splitLines(value: string): string[] {
   return value
     .split('\n')
@@ -775,6 +1028,13 @@ function boardSubtitle(isLoading: boolean, taskCount: number, staleCount: number
     return 'No active tasks yet. Create one here or through MCP.';
   }
   return `${taskCount} active tasks, ${staleCount} stale claims.`;
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 }
 
 function errorMessage(error: unknown): string {

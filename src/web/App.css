@@ -150,7 +150,7 @@ textarea {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 480px);
   gap: 18px;
   padding: 20px 22px 24px;
 }
@@ -356,6 +356,12 @@ textarea {
   margin-top: 12px;
 }
 
+.context-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -378,10 +384,42 @@ textarea {
 .claim-list,
 .evidence,
 .event-list,
-.completion-form {
+.completion-form,
+.context-activity {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.context-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.context-preview h3,
+.context-activity h3 {
+  margin: 0;
+  color: #647386;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.context-preview pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #d7dee5;
+  border-radius: 8px;
+  background: #111923;
+  color: #e7edf4;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .relation-panel {

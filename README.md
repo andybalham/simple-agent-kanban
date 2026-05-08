@@ -16,9 +16,9 @@ Local Agent Kanban is an agent work console for a single developer working acros
 
 ## Current Status
 
-The repository is currently at **Phase 5 complete; Phase 6 next**.
+The repository is currently at **Phase 6 complete; Phase 7 next**.
 
-Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, the local HTTP API, and the React board UI:
+Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, the local HTTP API, the React board UI, and the project context UI:
 
 - React and Vite web app shell.
 - Node HTTP API with `/health`, `/api/health`, and Phase 4 workflow routes for projects, context, tasks, claims, events, artifacts, and verification.
@@ -34,6 +34,7 @@ Implemented foundation, domain contract, SQLite persistence, durable MCP workflo
 - MCP stdio smoke test covering project creation, context update, task creation, claim, artifact, verification, and completion.
 - HTTP route tests covering project/context/task creation, board state, claims, artifacts, verification, completion, claim release events, and completion validation parity.
 - Operational React board UI with project selector, task detail surface, task create/edit flows, status moves, claim release, and stale claim indicators.
+- Project context editor with Markdown fields, repo metadata, workflow commands, an agent-facing preview, and context update activity visibility.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 

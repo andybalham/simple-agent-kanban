@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 5 complete; Phase 6 next**
+Current phase: **Phase 6 complete; Phase 7 next**
 
-Phase 5 is complete. The next implementation work is to add the project context UI on top of the existing context endpoints.
+Phase 6 is complete. The next implementation work is to add broader agent activity and review visibility on top of the existing events, claims, artifacts, and verification data.
 
 Architecture note: Phase 2 persistence now uses a central project registry database plus separate repository-local project databases at `.local-agent-kanban/project.sqlite`.
 
@@ -20,7 +20,7 @@ Architecture note: Phase 2 persistence now uses a central project registry datab
 | 3 | MCP Server Implementation | Complete | MCP tools now call the SQLite-backed service and an end-to-end stdio smoke test covers the required agent workflow. |
 | 4 | Local HTTP API | Complete | Added HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
 | 5 | React Board UI | Complete | Built the operational Kanban board, project selector, task detail surface, task create/edit flows, status updates, claim release action, and stale claim indicators. |
-| 6 | Project Context UI | Pending | Add context editing for overview, agent instructions, repo metadata, commands, and coding conventions. |
+| 6 | Project Context UI | Complete | Added context editing for overview, agent instructions, repo metadata, commands, coding conventions, agent preview, and context update activity. |
 | 7 | Agent Activity and Review Visibility | Pending | Add activity feed, active/stale claims panels, review queue, artifacts, verification evidence, and grooming indicators. |
 | 8 | Hardening and Local Polish | Pending | Add robust empty/loading/error states, backup/export support, migration checks, recovery docs, and local workflow polish. |
 
@@ -131,13 +131,6 @@ npm run check:phase0
 
 Last verified: 2026-05-08.
 
-## Next Phase Exit Criteria
-
-Phase 6 is complete when:
-
-- Context updates through UI are immediately visible through MCP.
-- Context updates write activity events.
-
 ## Phase 5 Evidence
 
 Phase 5 deliverables present:
@@ -167,3 +160,32 @@ Browser smoke test:
 - Completed the task through the UI with verification evidence and confirmed it appears in the Done column.
 
 Last verified: 2026-05-08.
+
+## Phase 6 Evidence
+
+Phase 6 deliverables present:
+
+- `src/web/App.tsx` now loads and saves project context through `GET/PUT /api/projects/:projectId/context`.
+- The project context panel supports Markdown fields for overview, agent instructions, and coding conventions.
+- The context editor supports structured fields for repo path, default branch, package manager, install command, test command, build command, and lint command.
+- The UI renders an agent preview of the exact context object returned by the HTTP endpoint and exposed through MCP `get_project_context`.
+- Context saves refresh recent `project.context_updated` activity from `/api/projects/:projectId/events`, verifying that UI updates are backed by the shared event-writing workflow.
+
+Phase 6 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+```
+
+Last verified: 2026-05-08.
+
+## Next Phase Exit Criteria
+
+Phase 7 is complete when:
+
+- Review queue, active/stale claim visibility, and activity feed are usable from the UI.
+- Task artifacts and verification evidence are visible enough for human review.
+- Grooming and review states are easy to identify without opening every task.
