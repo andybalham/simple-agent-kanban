@@ -377,10 +377,59 @@ textarea {
 
 .claim-list,
 .evidence,
-.event-list {
+.event-list,
+.completion-form {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.relation-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.relation-panel div {
+  min-width: 0;
+  border: 1px solid #d7dee5;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 9px;
+}
+
+.relation-panel__wide {
+  grid-column: 1 / -1;
+}
+
+.relation-panel span,
+.completion-form h3 {
+  color: #647386;
+  font-size: 12px;
+}
+
+.relation-panel span,
+.relation-panel strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.relation-panel strong {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.completion-form {
+  border-top: 1px solid #e2e7ec;
+  padding-top: 12px;
+}
+
+.completion-form h3 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .claim-row,

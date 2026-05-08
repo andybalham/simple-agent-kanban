@@ -37,6 +37,8 @@ type Task = {
   createdBy: Actor;
   needsGrooming: boolean;
   dependencyStatus: 'unblocked' | 'blocked_by_tasks' | 'blocked_external';
+  prerequisiteTaskIds: string[];
+  dependentTaskIds: string[];
   blockingPrerequisites: Array<{ id: string; title: string; status: TaskStatus }>;
   activeClaim: TaskClaim | null;
   isClaimable: boolean;
@@ -85,6 +87,11 @@ type TaskFormState = {
   needsGrooming: boolean;
 };
 
+type CompletionFormState = {
+  summary: string;
+  evidence: string;
+};
+
 const columns: Array<{ status: TaskStatus; label: string }> = [
   { status: 'backlog', label: 'Backlog' },
   { status: 'ready', label: 'Ready' },
@@ -108,6 +115,11 @@ const emptyTaskForm: TaskFormState = {
   needsGrooming: false,
 };
 
+const emptyCompletionForm: CompletionFormState = {
+  summary: '',
+  evidence: '',
+};
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -117,6 +129,7 @@ export function App() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [createForm, setCreateForm] = useState<TaskFormState>(emptyTaskForm);
   const [editForm, setEditForm] = useState<TaskFormState>(emptyTaskForm);
+  const [completionForm, setCompletionForm] = useState<CompletionFormState>(emptyCompletionForm);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectRepoPath, setNewProjectRepoPath] = useState('');
@@ -126,6 +139,9 @@ export function App() {
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  // Claims are leases, not task statuses. The board keeps a separate claim
+  // read model so stale work can be highlighted without moving cards between
+  // columns or duplicating the service's workflow rules in React.
   const staleClaimIds = useMemo(() => new Set(claims.filter(isStaleClaim).map((claim) => claim.id)), [claims]);
   const staleClaimsByTask = useMemo(() => groupClaimsByTask(claims.filter(isStaleClaim)), [claims]);
 
@@ -157,6 +173,9 @@ export function App() {
         api<{ tasks: Task[] }>(`/api/projects/${projectId}/tasks`),
         api<{ claims: TaskClaim[] }>(`/api/projects/${projectId}/claims?state=all`),
       ]);
+      // Archived tasks are still durable history, but Phase 5's board is the
+      // active control surface. Split originals therefore stay out of columns
+      // while the HTTP/MCP services remain the source of truth.
       setTasks(taskData.tasks.filter((task) => task.status !== 'archived'));
       setClaims(claimData.claims.filter((claim) => claim.releasedAt === null));
     } catch (apiError) {
@@ -186,6 +205,7 @@ export function App() {
       return;
     }
     setEditForm(taskToForm(selectedTask));
+    setCompletionForm(emptyCompletionForm);
   }, [selectedTask]);
 
   async function loadTaskDetail(taskId: string) {
@@ -269,6 +289,26 @@ export function App() {
       if (selectedTaskId === task.id) {
         await loadTaskDetail(task.id);
       }
+    });
+  }
+
+  async function completeTask(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedTaskId || !completionForm.summary.trim()) {
+      return;
+    }
+    await mutate(async () => {
+      await api(`/api/tasks/${selectedTaskId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({
+          actor: humanActor,
+          summary: completionForm.summary.trim(),
+          evidence: splitLines(completionForm.evidence),
+        }),
+      });
+      setCompletionForm(emptyCompletionForm);
+      await refreshBoard();
+      await loadTaskDetail(selectedTaskId);
     });
   }
 
@@ -397,6 +437,7 @@ export function App() {
             {selectedTask ? (
               <>
                 <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={setEditForm} onSubmit={saveTask} />
+                <TaskRelations task={selectedTask} />
                 <div className="claim-list">
                   {[selectedTask.activeClaim, ...(staleClaimsByTask.get(selectedTask.id) ?? [])].filter(isTaskClaim).map((claim) => (
                     <div className={staleClaimIds.has(claim.id) ? 'claim-row claim-row--stale' : 'claim-row'} key={claim.id}>
@@ -410,6 +451,14 @@ export function App() {
                     </div>
                   ))}
                 </div>
+                {selectedTask.status !== 'done' && selectedTask.status !== 'archived' && (
+                  <CompletionForm
+                    form={completionForm}
+                    disabled={isSaving}
+                    onChange={setCompletionForm}
+                    onSubmit={completeTask}
+                  />
+                )}
                 <TaskEvidence detail={detail} />
               </>
             ) : (
@@ -467,6 +516,31 @@ function TaskCard({
         </select>
       </label>
     </article>
+  );
+}
+
+function TaskRelations({ task }: { task: Task }) {
+  return (
+    <div className="relation-panel" aria-label="Task dependency context">
+      <div>
+        <span>Prerequisites</span>
+        <strong>{task.prerequisiteTaskIds.length}</strong>
+      </div>
+      <div>
+        <span>Dependents</span>
+        <strong>{task.dependentTaskIds.length}</strong>
+      </div>
+      <div>
+        <span>Claimable</span>
+        <strong>{task.isClaimable ? 'Yes' : 'No'}</strong>
+      </div>
+      {task.blockingPrerequisites.length > 0 && (
+        <div className="relation-panel__wide">
+          <span>Blocking</span>
+          <strong>{task.blockingPrerequisites.map((prerequisite) => prerequisite.title).join(', ')}</strong>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -547,6 +621,40 @@ function TaskForm({
   );
 }
 
+function CompletionForm({
+  form,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  form: CompletionFormState;
+  disabled: boolean;
+  onChange: (form: CompletionFormState) => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  return (
+    <form className="completion-form" onSubmit={onSubmit}>
+      <h3>Complete Task</h3>
+      <label className="field">
+        <span>Summary</span>
+        <textarea value={form.summary} onChange={(event) => onChange({ ...form, summary: event.target.value })} rows={3} />
+      </label>
+      <label className="field">
+        <span>Verification</span>
+        <textarea
+          value={form.evidence}
+          onChange={(event) => onChange({ ...form, evidence: event.target.value })}
+          placeholder="One verification result per line"
+          rows={3}
+        />
+      </label>
+      <button type="submit" disabled={disabled || !form.summary.trim()}>
+        Complete
+      </button>
+    </form>
+  );
+}
+
 function TaskEvidence({ detail }: { detail: TaskDetail | null }) {
   if (!detail) {
     return <p className="panel-empty">Loading task detail...</p>;
@@ -587,6 +695,9 @@ function TaskEvidence({ detail }: { detail: TaskDetail | null }) {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  // The Vite dev server proxies /api to the local Node server. Keeping this
+  // helper small and fetch-based makes the architectural boundary visible:
+  // React renders workflow state, while HTTP/core services decide validity.
   const response = await fetch(path, {
     ...init,
     headers: { 'content-type': 'application/json', ...init?.headers },

@@ -144,8 +144,9 @@ Phase 5 deliverables present:
 
 - `src/web/App.tsx` now loads projects, tasks, claims, task detail, artifacts, verification, and recent task events from the local HTTP API.
 - The UI includes a project selector, project creation, visible Kanban columns including Done, task cards with priority, labels, active claim, stale claim, blocker, and needs-grooming indicators.
-- The side panel includes task creation, task editing, task detail evidence, and claim release controls.
+- The side panel includes task creation, task editing, dependency context, task completion with verification evidence, task detail evidence, and claim release controls.
 - Board status moves call the shared HTTP status route, while task edits call a new shared `updateTask` service workflow through `PATCH /api/tasks/:taskId`.
+- Task completion calls the shared `completeTask` workflow through `POST /api/tasks/:taskId/complete` so the UI follows the same summary and evidence rules as MCP.
 - `src/core/services.ts`, `src/core/memoryService.ts`, `src/db/sqliteService.ts`, and `src/server/httpServer.ts` include the narrow task edit workflow used by the UI.
 - `src/server/httpServer.test.ts` covers the task edit route and verifies that it updates the shared service read model and writes `task.updated`.
 
@@ -162,6 +163,7 @@ Browser smoke test:
 
 - Created a project through the UI.
 - Created a task through the UI.
-- Moved the task from Backlog to Ready through the board move control.
+- Selected the task and confirmed dependency context renders in the detail panel.
+- Completed the task through the UI with verification evidence and confirmed it appears in the Done column.
 
 Last verified: 2026-05-08.
