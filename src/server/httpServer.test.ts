@@ -153,6 +153,69 @@ describe('HTTP API workflow', () => {
     const events = await api(baseUrl, 'GET', `/api/projects/${projectId}/events`);
     expect((arrayField(events, 'events') as JsonObject[]).map((event) => event.eventType)).toContain('task.updated');
   });
+
+  it('exposes Phase 7 operations data for activity, review, claims, and evidence views', async () => {
+    const { service, baseUrl } = await startApi();
+    const project = await api(baseUrl, 'POST', '/api/projects', {
+      actor: human,
+      name: 'Operations Project',
+      repoPath: 'C:/tmp/local-agent-kanban-http-ops',
+    });
+    const projectId = stringField(objectField(project, 'project'), 'id');
+    const reviewCandidate = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: agent,
+      title: 'Needs human review',
+      status: 'in_progress',
+    });
+    const staleCandidate = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: agent,
+      title: 'Stale lease',
+      status: 'ready',
+    });
+    const activeCandidate = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: human,
+      title: 'Active lease',
+      status: 'ready',
+    });
+    const reviewTaskId = stringField(objectField(reviewCandidate, 'task'), 'id');
+    const staleTaskId = stringField(objectField(staleCandidate, 'task'), 'id');
+    const activeTaskId = stringField(objectField(activeCandidate, 'task'), 'id');
+
+    await api(baseUrl, 'POST', `/api/tasks/${reviewTaskId}/artifacts`, {
+      actor: agent,
+      kind: 'commit',
+      value: 'abc123',
+    });
+    await api(baseUrl, 'POST', `/api/tasks/${reviewTaskId}/verifications`, {
+      actor: agent,
+      summary: 'Review build passed',
+      evidence: ['npm run test'],
+    });
+    await api(baseUrl, 'POST', `/api/tasks/${reviewTaskId}/review`, {
+      actor: agent,
+      summary: 'Ready for human inspection',
+    });
+    service.claimTask(agent.id, staleTaskId, 1, new Date('2026-05-08T10:00:00.000Z'));
+    service.claimTask('agent-active', activeTaskId, 600, new Date(Date.now() + 60_000));
+
+    const tasks = arrayField(await api(baseUrl, 'GET', `/api/projects/${projectId}/tasks`), 'tasks') as JsonObject[];
+    expect(tasks.find((task) => task.id === reviewTaskId)?.status).toBe('review');
+    expect(tasks.find((task) => task.id === reviewTaskId)?.needsGrooming).toBe(true);
+
+    const activeClaims = arrayField(await api(baseUrl, 'GET', `/api/projects/${projectId}/claims?state=active`), 'claims') as JsonObject[];
+    const staleClaims = arrayField(await api(baseUrl, 'GET', `/api/projects/${projectId}/claims?state=stale`), 'claims') as JsonObject[];
+    expect(activeClaims.map((claim) => claim.taskId)).toContain(activeTaskId);
+    expect(staleClaims.map((claim) => claim.taskId)).toContain(staleTaskId);
+
+    const detail = await api(baseUrl, 'GET', `/api/tasks/${reviewTaskId}`);
+    expect(detail.artifacts).toHaveLength(1);
+    expect(detail.verifications).toHaveLength(1);
+
+    const events = arrayField(await api(baseUrl, 'GET', `/api/projects/${projectId}/events`), 'events') as JsonObject[];
+    expect(events.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining(['artifact.recorded', 'verification.recorded', 'task.review_requested', 'task.claimed']),
+    );
+  });
 });
 
 async function startApi(): Promise<{ service: LocalAgentKanbanService; baseUrl: string }> {

@@ -66,6 +66,7 @@ type TaskEvent = {
   actor: Actor;
   eventType: string;
   message: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 };
 
@@ -183,11 +184,17 @@ export function App() {
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   // Claims are leases, not task statuses. The board keeps a separate claim
   // read model so stale work can be highlighted without moving cards between
   // columns or duplicating the service's workflow rules in React.
   const staleClaimIds = useMemo(() => new Set(claims.filter(isStaleClaim).map((claim) => claim.id)), [claims]);
+  const activeClaims = useMemo(() => claims.filter((claim) => !isStaleClaim(claim)), [claims]);
+  const staleClaims = useMemo(() => claims.filter(isStaleClaim), [claims]);
   const staleClaimsByTask = useMemo(() => groupClaimsByTask(claims.filter(isStaleClaim)), [claims]);
+  const reviewTasks = useMemo(() => tasks.filter((task) => task.status === 'review'), [tasks]);
+  const groomingTasks = useMemo(() => tasks.filter((task) => task.needsGrooming), [tasks]);
+  const recentActivity = useMemo(() => [...projectEvents].slice(-12).reverse(), [projectEvents]);
   const contextEvents = useMemo(
     () => projectEvents.filter((event) => event.eventType === 'project.context_updated').slice(-3).reverse(),
     [projectEvents],
@@ -319,6 +326,7 @@ export function App() {
       });
       setCreateForm(emptyTaskForm);
       await refreshBoard();
+      await loadProjectEvents(selectedProjectId);
     });
   }
 
@@ -344,6 +352,7 @@ export function App() {
         }),
       });
       await refreshBoard();
+      await loadProjectEvents(selectedProjectId);
       await loadTaskDetail(selectedTaskId);
     });
   }
@@ -358,6 +367,7 @@ export function App() {
         body: JSON.stringify({ actor: humanActor, status }),
       });
       await refreshBoard();
+      await loadProjectEvents(task.projectId);
       if (selectedTaskId === task.id) {
         await loadTaskDetail(task.id);
       }
@@ -380,6 +390,7 @@ export function App() {
       });
       setCompletionForm(emptyCompletionForm);
       await refreshBoard();
+      await loadProjectEvents(selectedProjectId);
       await loadTaskDetail(selectedTaskId);
     });
   }
@@ -407,6 +418,7 @@ export function App() {
         body: JSON.stringify({ actor: humanActor }),
       });
       await refreshBoard();
+      await loadProjectEvents(selectedProjectId);
       if (selectedTaskId) {
         await loadTaskDetail(selectedTaskId);
       }
@@ -478,6 +490,19 @@ export function App() {
               Refresh
             </button>
           </div>
+
+          <OperationsConsole
+            activeClaims={activeClaims}
+            staleClaims={staleClaims}
+            reviewTasks={reviewTasks}
+            groomingTasks={groomingTasks}
+            events={recentActivity}
+            taskById={taskById}
+            selectedTaskId={selectedTaskId}
+            disabled={isSaving}
+            onSelectTask={setSelectedTaskId}
+            onReleaseClaim={(claimId) => void releaseClaim(claimId)}
+          />
 
           <div className="columns">
             {columns.map((column) => {
@@ -568,6 +593,226 @@ export function App() {
         </aside>
       </section>
     </main>
+  );
+}
+
+function OperationsConsole({
+  activeClaims,
+  staleClaims,
+  reviewTasks,
+  groomingTasks,
+  events,
+  taskById,
+  selectedTaskId,
+  disabled,
+  onSelectTask,
+  onReleaseClaim,
+}: {
+  activeClaims: TaskClaim[];
+  staleClaims: TaskClaim[];
+  reviewTasks: Task[];
+  groomingTasks: Task[];
+  events: TaskEvent[];
+  taskById: Map<string, Task>;
+  selectedTaskId: string | null;
+  disabled: boolean;
+  onSelectTask: (taskId: string) => void;
+  onReleaseClaim: (claimId: string) => void;
+}) {
+  return (
+    <section className="operations-console" aria-label="Agent operations console">
+      <div className="ops-strip" aria-label="Project operations summary">
+        <MetricTile label="Review" value={reviewTasks.length} tone={reviewTasks.length > 0 ? 'attention' : 'neutral'} />
+        <MetricTile label="Active claims" value={activeClaims.length} tone="good" />
+        <MetricTile label="Stale claims" value={staleClaims.length} tone={staleClaims.length > 0 ? 'danger' : 'neutral'} />
+        <MetricTile label="Needs grooming" value={groomingTasks.length} tone={groomingTasks.length > 0 ? 'attention' : 'neutral'} />
+      </div>
+
+      <div className="ops-grid">
+        <section className="ops-panel" aria-label="Review queue">
+          <PanelHeading title="Review Queue" count={reviewTasks.length} />
+          <TaskQueue
+            tasks={reviewTasks}
+            selectedTaskId={selectedTaskId}
+            emptyText="No tasks waiting for review."
+            onSelectTask={onSelectTask}
+          />
+        </section>
+
+        <section className="ops-panel" aria-label="Stale claims">
+          <PanelHeading title="Stale Claims" count={staleClaims.length} />
+          <ClaimQueue
+            claims={staleClaims}
+            taskById={taskById}
+            tone="stale"
+            emptyText="No expired leases."
+            disabled={disabled}
+            onSelectTask={onSelectTask}
+            onReleaseClaim={onReleaseClaim}
+          />
+        </section>
+
+        <section className="ops-panel" aria-label="Active claims">
+          <PanelHeading title="Active Claims" count={activeClaims.length} />
+          <ClaimQueue
+            claims={activeClaims}
+            taskById={taskById}
+            tone="active"
+            emptyText="No agents currently hold a lease."
+            disabled={disabled}
+            onSelectTask={onSelectTask}
+            onReleaseClaim={onReleaseClaim}
+          />
+        </section>
+
+        <section className="ops-panel" aria-label="Recent activity">
+          <PanelHeading title="Activity" count={events.length} />
+          <ActivityFeed events={events} taskById={taskById} onSelectTask={onSelectTask} />
+        </section>
+      </div>
+
+      {groomingTasks.length > 0 && (
+        <section className="grooming-band" aria-label="Tasks needing grooming">
+          <PanelHeading title="Needs Grooming" count={groomingTasks.length} />
+          <TaskQueue tasks={groomingTasks} selectedTaskId={selectedTaskId} emptyText="" onSelectTask={onSelectTask} compact />
+        </section>
+      )}
+    </section>
+  );
+}
+
+function MetricTile({ label, value, tone }: { label: string; value: number; tone: 'neutral' | 'good' | 'attention' | 'danger' }) {
+  return (
+    <div className={`metric-tile metric-tile--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function PanelHeading({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="panel-heading">
+      <h3>{title}</h3>
+      <span>{count}</span>
+    </div>
+  );
+}
+
+function TaskQueue({
+  tasks,
+  selectedTaskId,
+  emptyText,
+  compact = false,
+  onSelectTask,
+}: {
+  tasks: Task[];
+  selectedTaskId: string | null;
+  emptyText: string;
+  compact?: boolean;
+  onSelectTask: (taskId: string) => void;
+}) {
+  if (tasks.length === 0) {
+    return <p className="ops-empty">{emptyText}</p>;
+  }
+
+  return (
+    <div className={compact ? 'task-queue task-queue--compact' : 'task-queue'}>
+      {tasks.map((task) => (
+        <button
+          className={selectedTaskId === task.id ? 'queue-item queue-item--selected' : 'queue-item'}
+          type="button"
+          key={task.id}
+          onClick={() => onSelectTask(task.id)}
+        >
+          <span className={`priority priority--${task.priority}`}>{task.priority}</span>
+          <strong>{task.title}</strong>
+          {task.needsGrooming && <span className="queue-note">agent-created</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ClaimQueue({
+  claims,
+  taskById,
+  tone,
+  emptyText,
+  disabled,
+  onSelectTask,
+  onReleaseClaim,
+}: {
+  claims: TaskClaim[];
+  taskById: Map<string, Task>;
+  tone: 'active' | 'stale';
+  emptyText: string;
+  disabled: boolean;
+  onSelectTask: (taskId: string) => void;
+  onReleaseClaim: (claimId: string) => void;
+}) {
+  if (claims.length === 0) {
+    return <p className="ops-empty">{emptyText}</p>;
+  }
+
+  return (
+    <div className="claim-queue">
+      {claims.map((claim) => {
+        const task = taskById.get(claim.taskId);
+        return (
+          <div className={`claim-card claim-card--${tone}`} key={claim.id}>
+            <button type="button" onClick={() => onSelectTask(claim.taskId)}>
+              <strong>{task?.title ?? claim.taskId}</strong>
+              <span>{claim.agentId}</span>
+            </button>
+            <div>
+              <span>{tone === 'stale' ? `Expired ${relativeTime(claim.expiresAt)}` : `Heartbeat ${relativeTime(claim.lastHeartbeatAt)}`}</span>
+              <button type="button" onClick={() => onReleaseClaim(claim.id)} disabled={disabled}>
+                Release
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActivityFeed({
+  events,
+  taskById,
+  onSelectTask,
+}: {
+  events: TaskEvent[];
+  taskById: Map<string, Task>;
+  onSelectTask: (taskId: string) => void;
+}) {
+  if (events.length === 0) {
+    return <p className="ops-empty">No activity recorded yet.</p>;
+  }
+
+  return (
+    <div className="activity-feed">
+      {events.map((event) => {
+        const task = event.taskId ? taskById.get(event.taskId) : null;
+        return (
+          <article className="activity-row" key={event.id}>
+            <div>
+              <span>{formatDateTime(event.createdAt)}</span>
+              <strong>{event.message}</strong>
+              <small>
+                {event.eventType} by {event.actor.id}
+              </small>
+            </div>
+            {event.taskId && (
+              <button type="button" onClick={() => onSelectTask(event.taskId!)}>
+                {task?.title ?? 'Open task'}
+              </button>
+            )}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
@@ -887,14 +1132,31 @@ function TaskEvidence({ detail }: { detail: TaskDetail | null }) {
         <>
           {detail.artifacts.map((artifact) => (
             <div className="evidence-row" key={artifact.id}>
-              <strong>{artifact.kind}</strong>
-              <span>{artifact.value}</span>
+              <div>
+                <strong>{artifact.kind}</strong>
+                <span>{artifact.value}</span>
+              </div>
+              <small>
+                {artifact.createdBy.id} | {formatDateTime(artifact.createdAt)}
+              </small>
             </div>
           ))}
           {detail.verifications.map((verification) => (
             <div className="evidence-row" key={verification.id}>
-              <strong>verification</strong>
-              <span>{verification.summary}</span>
+              <div>
+                <strong>verification</strong>
+                <span>{verification.summary}</span>
+                {verification.evidence.length > 0 && (
+                  <ul>
+                    {verification.evidence.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <small>
+                {verification.createdBy.id} | {formatDateTime(verification.createdAt)}
+              </small>
             </div>
           ))}
         </>
@@ -1035,6 +1297,20 @@ function formatDateTime(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function relativeTime(value: string): string {
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  const deltaMilliseconds = new Date(value).getTime() - Date.now();
+  const deltaMinutes = Math.round(deltaMilliseconds / 60_000);
+  if (Math.abs(deltaMinutes) < 60) {
+    return formatter.format(deltaMinutes, 'minute');
+  }
+  const deltaHours = Math.round(deltaMinutes / 60);
+  if (Math.abs(deltaHours) < 48) {
+    return formatter.format(deltaHours, 'hour');
+  }
+  return formatter.format(Math.round(deltaHours / 24), 'day');
 }
 
 function errorMessage(error: unknown): string {

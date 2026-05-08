@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 6 complete; Phase 7 next**
+Current phase: **Phase 7 complete; Phase 8 next**
 
-Phase 6 is complete. The next implementation work is to add broader agent activity and review visibility on top of the existing events, claims, artifacts, and verification data.
+Phase 7 is complete. The next implementation work is hardening and local polish now that the UI exposes board, context, activity, claims, review, grooming, artifacts, and verification workflows.
 
 Architecture note: Phase 2 persistence now uses a central project registry database plus separate repository-local project databases at `.local-agent-kanban/project.sqlite`.
 
@@ -21,7 +21,7 @@ Architecture note: Phase 2 persistence now uses a central project registry datab
 | 4 | Local HTTP API | Complete | Added HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
 | 5 | React Board UI | Complete | Built the operational Kanban board, project selector, task detail surface, task create/edit flows, status updates, claim release action, and stale claim indicators. |
 | 6 | Project Context UI | Complete | Added context editing for overview, agent instructions, repo metadata, commands, coding conventions, agent preview, and context update activity. |
-| 7 | Agent Activity and Review Visibility | Pending | Add activity feed, active/stale claims panels, review queue, artifacts, verification evidence, and grooming indicators. |
+| 7 | Agent Activity and Review Visibility | Complete | Added activity feed, active and stale claims panels, review queue, task evidence detail, and grooming visibility. |
 | 8 | Hardening and Local Polish | Pending | Add robust empty/loading/error states, backup/export support, migration checks, recovery docs, and local workflow polish. |
 
 ## Phase 0 Evidence
@@ -182,10 +182,37 @@ npm run check:phase0
 
 Last verified: 2026-05-08.
 
+## Phase 7 Evidence
+
+Phase 7 deliverables present:
+
+- `src/web/App.tsx` now includes an agent operations console above the board with review queue, active claims, stale claims, recent activity, and needs-grooming summary views.
+- Operations panels select tasks into the existing detail surface so review, claim, and activity items connect back to task context without duplicating workflow rules in React.
+- Stale claim rows keep the human release action visible from both the operations console and task detail.
+- Task detail evidence now shows artifact metadata, verification summaries, verification evidence lines, actor identity, and timestamps.
+- UI mutations that affect operations visibility refresh project activity after task create/edit/status/completion and claim release actions.
+- `src/server/httpServer.test.ts` covers the Phase 7 query contract for review tasks, active claims, stale claims, task evidence, and activity events.
+
+Phase 7 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+```
+
+Browser smoke test:
+
+- Opened `http://127.0.0.1:5173`.
+- Confirmed the running UI renders Review Queue, Stale Claims, Active Claims, Activity, Needs grooming, and the Local Agent Kanban shell.
+
+Last verified: 2026-05-08.
+
 ## Next Phase Exit Criteria
 
-Phase 7 is complete when:
+Phase 8 is complete when:
 
-- Review queue, active/stale claim visibility, and activity feed are usable from the UI.
-- Task artifacts and verification evidence are visible enough for human review.
-- Grooming and review states are easy to identify without opening every task.
+- Fresh clone setup is documented and tested.
+- Existing central and project SQLite databases migrate cleanly.
+- Common agent workflow failures produce understandable errors.
