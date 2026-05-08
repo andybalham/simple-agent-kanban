@@ -9,3 +9,6 @@ export function createLocalDatabaseRuntime(url = 'local.sqlite'): DatabaseRuntim
     url,
   };
 }
+
+export * from './schema.ts';
+export * from './sqliteService.ts';

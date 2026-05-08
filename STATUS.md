@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 2 next**
+Current phase: **Phase 2 complete; Phase 3 next**
 
-Phase 1 is complete. The next implementation work is to add SQLite persistence with Drizzle migrations and repository implementations over the Phase 1 domain/service contracts.
+Phase 2 is complete. The next implementation work is to connect the MCP server tools to the durable SQLite-backed domain service and add an end-to-end MCP workflow smoke test.
 
 ## Phase Tracker
 
@@ -14,7 +14,7 @@ Phase 1 is complete. The next implementation work is to add SQLite persistence w
 | --- | --- | --- | --- |
 | 0 | Project Foundation | Complete | React/Vite shell, Node HTTP shell, MCP ping entrypoint, shared `src/core` and `src/db` boundaries, TypeScript, lint, format, test, and scaffold check are in place. |
 | 1 | MCP Contract and Domain Model | Complete | Added domain types, MCP tool schemas, validation helpers, service interfaces, and an in-memory workflow service with tests for creation defaults, dependencies, claims, splitting, review, completion, and terminal archive behavior. |
-| 2 | SQLite Persistence | Pending | Add Drizzle ORM, migrations, repositories, and durable service wiring with SQLite tests. |
+| 2 | SQLite Persistence | Complete | Added Drizzle schema, SQLite migration SQL, durable service/repository implementation, seed data helper, and SQLite workflow tests with transaction rollback coverage. |
 | 3 | MCP Server Implementation | Pending | Connect MCP tools to durable domain services and add end-to-end MCP workflow smoke tests. |
 | 4 | Local HTTP API | Pending | Add HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
 | 5 | React Board UI | Pending | Build the operational Kanban board, task detail surface, task create/edit flows, status updates, and claim release action. |
@@ -64,13 +64,31 @@ npm run check:phase0
 
 Last verified: 2026-05-06.
 
+## Phase 2 Evidence
+
+Phase 2 deliverables present:
+
+- `src/db/schema.ts` defines Drizzle tables for projects, project contexts, tasks, dependencies, claims, events, artifacts, and verification.
+- `src/db/migrations/0000_phase2_sqlite_persistence.sql` creates the V1 SQLite schema and indexes.
+- `src/db/sqliteService.ts` implements the Phase 1 service contract over SQLite/Drizzle, including transaction-scoped event writes.
+- `src/db/sqliteService.test.ts` verifies durability across reopen, dependency-cycle rollback, claimability, splitting, and completion evidence rules against SQLite.
+
+Phase 2 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+```
+
+Last verified: 2026-05-08.
+
 ## Next Phase Exit Criteria
 
-Phase 2 is complete when:
+Phase 3 is complete when:
 
-- Drizzle ORM is added for SQLite.
-- Migrations exist for projects, project contexts, tasks, dependencies, claims, events, artifacts, and verification.
-- Repository implementations satisfy the Phase 1 service contracts.
-- Domain workflow tests pass against a temporary SQLite database.
-- Event writes are transactional with the state change they describe.
-- Database-specific code remains isolated under `src/db` or repository modules.
+- MCP tools call the SQLite-backed service instead of the Phase 0 ping-only shell.
+- Agents can create projects, update context, create and claim tasks, record artifacts and verification, and complete tasks through MCP.
+- MCP tool responses use the structured V1 schemas and friendly validation errors.
+- A scripted MCP-only workflow smoke test passes end to end.

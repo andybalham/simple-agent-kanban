@@ -16,9 +16,9 @@ Local Agent Kanban is an agent work console for a single developer working in on
 
 ## Current Status
 
-The repository is currently at **Phase 1 complete; Phase 2 next**.
+The repository is currently at **Phase 2 complete; Phase 3 next**.
 
-Implemented foundation and domain contract:
+Implemented foundation, domain contract, and SQLite persistence:
 
 - React and Vite web app shell.
 - Node HTTP API shell with `/health` and `/api/health`.
@@ -28,6 +28,8 @@ Implemented foundation and domain contract:
 - Local environment example in `.env.example`.
 - Dependency-free Phase 0 scaffold check.
 - Domain types, MCP tool schemas, validation helpers, service interfaces, and in-memory workflow tests for Phase 1.
+- Drizzle SQLite schema and migration SQL for projects, contexts, tasks, dependencies, claims, events, artifacts, and verification.
+- SQLite-backed service implementation under `src/db` with seed data support and temporary database workflow tests.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
@@ -92,13 +94,28 @@ npm run dev:mcp
 
 ## Checks
 
-Run the normal project checks:
+Run the test suite manually:
+
+```bash
+npm run test
+```
+
+This runs Vitest once through the `test` npm script.
+
+Run the normal project checks before handing off meaningful code changes:
 
 ```bash
 npm run lint
 npm run test
 npm run build
 ```
+
+Script reference:
+
+- `npm run lint` runs ESLint across the repository.
+- `npm run test` runs the Vitest test suite once.
+- `npm run build` runs TypeScript checking and the Vite production build.
+- `npm run check:phase0` verifies that the foundation scaffold files and scripts still exist.
 
 Run the Phase 0 scaffold check:
 

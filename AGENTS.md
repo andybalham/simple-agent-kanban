@@ -138,7 +138,10 @@ Current local ports:
 - TypeScript is used throughout.
 - The project uses ESM (`"type": "module"`).
 - Prefer explicit domain types and validation schemas for workflow boundaries.
-- Keep implementation code self-documenting for learners. Add verbose, useful comments around domain rules, workflow invariants, validation decisions, and non-obvious control flow so new contributors can understand why the code behaves the way it does.
+- Treat this repository as a learning resource for TypeScript, React, SQLite/Drizzle, local HTTP APIs, and MCP server implementation.
+- Keep implementation code self-documenting for learners. Add useful comments around domain rules, workflow invariants, validation decisions, transaction boundaries, persistence mapping, MCP tool contracts, and non-obvious control flow so new contributors can understand why the code behaves the way it does.
+- Prefer comments that explain intent, technology choices, and cross-boundary behavior. Avoid comments that merely restate a line of code.
+- When adding MCP, HTTP, or persistence code, make the adapter boundary clear in comments: MCP/HTTP should call shared services, services should enforce workflow rules, and repositories/database code should own storage details.
 - Preserve existing formatting; use Prettier for broad formatting changes.
 - Add focused tests for state transitions, validation failures, dependency handling, claim expiry/reclaiming, event writing, and completion requirements.
 
