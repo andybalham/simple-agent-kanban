@@ -16,13 +16,13 @@ Local Agent Kanban is an agent work console for a single developer working in on
 
 ## Current Status
 
-The repository is currently at **Phase 2 complete; Phase 3 next**.
+The repository is currently at **Phase 3 complete; Phase 4 next**.
 
-Implemented foundation, domain contract, and SQLite persistence:
+Implemented foundation, domain contract, SQLite persistence, and durable MCP workflows:
 
 - React and Vite web app shell.
 - Node HTTP API shell with `/health` and `/api/health`.
-- MCP stdio entrypoint with a `ping` tool.
+- MCP stdio entrypoint with `ping` plus the V1 project, context, task, claim, artifact, verification, review, and completion workflow tools.
 - Shared `src/core` and `src/db` boundaries.
 - TypeScript, ESLint, Prettier, and Vitest configuration.
 - Local environment example in `.env.example`.
@@ -30,6 +30,8 @@ Implemented foundation, domain contract, and SQLite persistence:
 - Domain types, MCP tool schemas, validation helpers, service interfaces, and in-memory workflow tests for Phase 1.
 - Drizzle SQLite schema and migration SQL for projects, contexts, tasks, dependencies, claims, events, artifacts, and verification.
 - SQLite-backed service implementation under `src/db` with seed data support and temporary database workflow tests.
+- MCP tool registration over the SQLite-backed service with structured results and domain validation errors.
+- MCP stdio smoke test covering project creation, context update, task creation, claim, artifact, verification, and completion.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
@@ -83,6 +85,32 @@ Run the MCP server entrypoint:
 
 ```bash
 npm run dev:mcp
+```
+
+By default the MCP process stores data in `./local-agent-kanban.sqlite`. Override that path for local agent configuration or tests with:
+
+```powershell
+$env:LOCAL_AGENT_KANBAN_DB = 'C:\path\to\local-agent-kanban.sqlite'
+npm run dev:mcp
+```
+
+Set `LOCAL_AGENT_KANBAN_SEED=true` when starting the MCP process to create the local seed project if it does not already exist.
+
+Example MCP server configuration:
+
+```json
+{
+  "mcpServers": {
+    "local-agent-kanban": {
+      "command": "npm",
+      "args": ["run", "dev:mcp"],
+      "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
+      "env": {
+        "LOCAL_AGENT_KANBAN_DB": "C:\\Users\\MONTEITH\\Documents\\New project\\local-agent-kanban.sqlite"
+      }
+    }
+  }
+}
 ```
 
 ## Ports
@@ -141,7 +169,7 @@ npm run format
 1. Project foundation.
 2. MCP contract and domain model.
 3. SQLite persistence.
-4. Durable MCP server implementation.
+4. Durable MCP server implementation. **Complete.**
 5. Local HTTP API.
 6. React board UI.
 7. Project context UI.

@@ -8,6 +8,7 @@ import {
   nonEmptyTrimmedString,
   projectContextInputSchema,
   replacementTaskSchema,
+  taskPrioritySchema,
   taskStatusSchema,
   verificationEvidenceSchema,
 } from './validation.ts';
@@ -29,8 +30,28 @@ const optionalProjectFilterSchema = z.object({
 const taskResponseSchema = z.object({
   taskId: idSchema,
   projectId: idSchema,
+  title: z.string(),
   status: taskStatusSchema,
+  priority: taskPrioritySchema,
+  labels: z.array(z.string()),
   needsGrooming: z.boolean(),
+  dependencyStatus: z.enum(['unblocked', 'blocked_by_tasks', 'blocked_external']),
+  prerequisiteTaskIds: z.array(idSchema),
+  dependentTaskIds: z.array(idSchema),
+  blockingPrerequisites: z.array(z.object({ id: idSchema, title: z.string(), status: taskStatusSchema })),
+  activeClaim: z
+    .object({
+      claimId: idSchema,
+      taskId: idSchema,
+      agentId: idSchema,
+      claimedAt: z.string().datetime(),
+      expiresAt: z.string().datetime(),
+      lastHeartbeatAt: z.string().datetime(),
+      releasedAt: z.string().datetime().nullable(),
+    })
+    .nullable(),
+  isClaimable: z.boolean(),
+  updatedAt: z.string().datetime(),
 });
 
 /**
@@ -42,7 +63,9 @@ const taskResponseSchema = z.object({
 export const mcpToolSchemas = {
   list_projects: {
     input: z.object({}),
-    output: z.object({ projects: z.array(z.object({ id: idSchema, name: z.string() })) }),
+    output: z.object({
+      projects: z.array(z.object({ id: idSchema, name: z.string(), description: z.string(), updatedAt: z.string().datetime() })),
+    }),
   },
   create_project: {
     input: z.object({
@@ -54,7 +77,7 @@ export const mcpToolSchemas = {
   },
   get_project_context: {
     input: z.object({ projectId: idSchema }),
-    output: projectContextInputSchema.extend({ projectId: idSchema }),
+    output: projectContextInputSchema.extend({ projectId: idSchema, updatedAt: z.string().datetime() }),
   },
   update_project_context: {
     input: z.object({ actor: actorSchema, projectId: idSchema, context: projectContextInputSchema.partial() }),
@@ -98,7 +121,15 @@ export const mcpToolSchemas = {
   },
   claim_task: {
     input: z.object({ agentId: idSchema, taskId: idSchema, leaseSeconds: z.number().int().positive().default(1800) }),
-    output: z.object({ claimId: idSchema, taskId: idSchema, expiresAt: z.string().datetime() }),
+    output: z.object({
+      claimId: idSchema,
+      taskId: idSchema,
+      agentId: idSchema,
+      claimedAt: z.string().datetime(),
+      expiresAt: z.string().datetime(),
+      lastHeartbeatAt: z.string().datetime(),
+      releasedAt: z.string().datetime().nullable(),
+    }),
   },
   heartbeat_claim: {
     input: z.object({ agentId: idSchema, claimId: idSchema, leaseSeconds: z.number().int().positive().default(1800) }),

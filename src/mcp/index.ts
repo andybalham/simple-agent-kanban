@@ -1,21 +1,22 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-import { createPingResponse } from '../core/index.ts';
+import { createSqliteKanbanService } from '../db/index.ts';
+import { createKanbanMcpServer } from './tools.ts';
 
-const server = new McpServer({
-  name: 'local-agent-kanban',
-  version: '0.1.0',
+const service = createSqliteKanbanService(process.env.LOCAL_AGENT_KANBAN_DB, {
+  seed: process.env.LOCAL_AGENT_KANBAN_SEED === 'true',
 });
-
-server.tool('ping', {}, async () => ({
-  content: [
-    {
-      type: 'text',
-      text: JSON.stringify(createPingResponse('mcp')),
-    },
-  ],
-}));
+const server = createKanbanMcpServer(service);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+process.on('SIGINT', () => {
+  service.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  service.close();
+  process.exit(0);
+});
