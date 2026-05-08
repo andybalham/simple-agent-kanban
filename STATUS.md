@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 3 complete; Phase 4 next**
+Current phase: **Phase 4 complete; Phase 5 next**
 
-Phase 3 is complete. The next implementation work is to expose the same durable workflows through the local HTTP API for the React UI.
+Phase 4 is complete. The next implementation work is to build the React board UI on top of the local HTTP API.
 
 ## Phase Tracker
 
@@ -16,7 +16,7 @@ Phase 3 is complete. The next implementation work is to expose the same durable 
 | 1 | MCP Contract and Domain Model | Complete | Added domain types, MCP tool schemas, validation helpers, service interfaces, and an in-memory workflow service with tests for creation defaults, dependencies, claims, splitting, review, completion, and terminal archive behavior. |
 | 2 | SQLite Persistence | Complete | Added Drizzle schema, SQLite migration SQL, durable service/repository implementation, seed data helper, and SQLite workflow tests with transaction rollback coverage. |
 | 3 | MCP Server Implementation | Complete | MCP tools now call the SQLite-backed service and an end-to-end stdio smoke test covers the required agent workflow. |
-| 4 | Local HTTP API | Pending | Add HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
+| 4 | Local HTTP API | Complete | Added HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
 | 5 | React Board UI | Pending | Build the operational Kanban board, task detail surface, task create/edit flows, status updates, and claim release action. |
 | 6 | Project Context UI | Pending | Add context editing for overview, agent instructions, repo metadata, commands, and coding conventions. |
 | 7 | Agent Activity and Review Visibility | Pending | Add activity feed, active/stale claims panels, review queue, artifacts, verification evidence, and grooming indicators. |
@@ -105,10 +105,32 @@ npm run check:phase0
 
 Last verified: 2026-05-08.
 
+## Phase 4 Evidence
+
+Phase 4 deliverables present:
+
+- `src/server/httpServer.ts` exposes local API routes for projects, project context, tasks, task dependencies, claims, events, artifacts, verification, review, and completion.
+- `src/server/index.ts` starts the HTTP API with the same SQLite-backed service and seed configuration used by MCP.
+- `src/core/services.ts` now includes read methods for claims, artifacts, and verification so HTTP adapters do not reach into persistence directly.
+- `src/core/memoryService.ts` and `src/db/sqliteService.ts` implement those read methods while preserving the shared service boundary.
+- `src/server/httpServer.test.ts` covers a Phase 4 route workflow and verifies completion and claim-release event parity with the shared service rules.
+- `README.md` documents the implemented local HTTP API routes.
+
+Phase 4 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+```
+
+Last verified: 2026-05-08.
+
 ## Next Phase Exit Criteria
 
-Phase 4 is complete when:
+Phase 5 is complete when:
 
-- Local HTTP routes expose projects, context, tasks, claims, events, artifacts, and verification through the same service layer.
-- HTTP mutations reuse the domain service validation and event-writing behavior already exercised by MCP.
-- Board state returned by HTTP matches state produced by MCP workflows.
+- A task created by MCP appears in the UI.
+- A task moved in the UI is reflected through MCP `list_tasks`.
+- Stale claims are visibly distinct.

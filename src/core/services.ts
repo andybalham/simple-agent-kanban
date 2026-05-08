@@ -55,6 +55,13 @@ export type ListTasksInput = {
   now?: Date;
 };
 
+export type ListClaimsInput = {
+  projectId?: string;
+  taskId?: string;
+  state?: 'active' | 'stale' | 'released' | 'all';
+  now?: Date;
+};
+
 /**
  * Replacement tasks belong to the original task's project and actor workflow.
  * They intentionally cannot set needsGrooming because accepted split output is
@@ -111,6 +118,7 @@ export type TaskWorkflow = {
  * so a task can stay in progress even if an agent lease expires.
  */
 export type ClaimWorkflow = {
+  listClaims(input?: ListClaimsInput): TaskClaim[];
   claimTask(agentId: string, taskId: string, leaseSeconds?: number, now?: Date): TaskClaim;
   heartbeatClaim(agentId: string, claimId: string, leaseSeconds?: number, now?: Date): TaskClaim;
   releaseClaim(actor: Actor, claimId: string, now?: Date): TaskClaim;
@@ -122,7 +130,9 @@ export type ClaimWorkflow = {
  * checked" as different concepts.
  */
 export type ArtifactWorkflow = {
+  listArtifacts(taskId: string): TaskArtifact[];
   recordArtifact(actor: Actor, taskId: string, kind: ArtifactKind, value: string, metadata?: Record<string, unknown>): TaskArtifact;
+  listVerifications(taskId: string): TaskVerification[];
   recordVerification(actor: Actor, taskId: string, summary: string, evidence: string[]): TaskVerification;
 };
 

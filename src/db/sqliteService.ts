@@ -25,6 +25,7 @@ import {
 import type {
   CreateProjectInput,
   CreateTaskInput,
+  ListClaimsInput,
   ListTasksInput,
   LocalAgentKanbanService,
   SplitTaskInput,
@@ -431,6 +432,31 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
     });
   }
 
+  listClaims(input: ListClaimsInput = {}): TaskClaim[] {
+    const now = input.now ?? new Date();
+    return this.database
+      .select()
+      .from(taskClaims)
+      .orderBy(asc(taskClaims.claimedAt))
+      .all()
+      .map(toTaskClaim)
+      .filter((claim) => !input.taskId || claim.taskId === input.taskId)
+      .filter((claim) => !input.projectId || this.requireTask(claim.taskId).projectId === input.projectId)
+      .filter((claim) => {
+        const state = input.state ?? 'all';
+        if (state === 'all') {
+          return true;
+        }
+        if (state === 'released') {
+          return claim.releasedAt !== null;
+        }
+        if (claim.releasedAt !== null) {
+          return false;
+        }
+        return state === 'active' ? claim.expiresAt.getTime() > now.getTime() : claim.expiresAt.getTime() <= now.getTime();
+      });
+  }
+
   heartbeatClaim(agentId: string, claimId: string, leaseSeconds = 1800, now = new Date()): TaskClaim {
     return this.transaction(() => {
       const claim = this.requireClaim(claimId);
@@ -526,6 +552,17 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
     });
   }
 
+  listArtifacts(taskId: string): TaskArtifact[] {
+    this.requireTask(taskId);
+    return this.database
+      .select()
+      .from(taskArtifacts)
+      .where(eq(taskArtifacts.taskId, taskId))
+      .orderBy(asc(taskArtifacts.createdAt))
+      .all()
+      .map(toTaskArtifact);
+  }
+
   recordVerification(actor: Actor, taskId: string, summary: string, evidence: string[]): TaskVerification {
     return this.transaction(() => {
       const task = this.requireTask(taskId);
@@ -554,6 +591,17 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
       });
       return verification;
     });
+  }
+
+  listVerifications(taskId: string): TaskVerification[] {
+    this.requireTask(taskId);
+    return this.database
+      .select()
+      .from(taskVerifications)
+      .where(eq(taskVerifications.taskId, taskId))
+      .orderBy(asc(taskVerifications.createdAt))
+      .all()
+      .map(toTaskVerification);
   }
 
   requestReview(actor: Actor, taskId: string, summary: string): TaskWithRelations {

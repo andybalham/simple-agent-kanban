@@ -306,6 +306,31 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
     return claim;
   }
 
+  listClaims(input: { projectId?: string; taskId?: string; state?: 'active' | 'stale' | 'released' | 'all'; now?: Date } = {}): TaskClaim[] {
+    const now = input.now ?? new Date();
+    return [...this.claims.values()]
+      .filter((claim) => !input.taskId || claim.taskId === input.taskId)
+      .filter((claim) => {
+        if (!input.projectId) {
+          return true;
+        }
+        return this.requireTask(claim.taskId).projectId === input.projectId;
+      })
+      .filter((claim) => {
+        const state = input.state ?? 'all';
+        if (state === 'all') {
+          return true;
+        }
+        if (state === 'released') {
+          return claim.releasedAt !== null;
+        }
+        if (claim.releasedAt !== null) {
+          return false;
+        }
+        return state === 'active' ? claim.expiresAt.getTime() > now.getTime() : claim.expiresAt.getTime() <= now.getTime();
+      });
+  }
+
   heartbeatClaim(agentId: string, claimId: string, leaseSeconds = 1800, now = new Date()): TaskClaim {
     const claim = this.requireClaim(claimId);
     // Only the owning agent can extend its lease. Human override is modeled as
@@ -391,6 +416,13 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
     return artifact;
   }
 
+  listArtifacts(taskId: string): TaskArtifact[] {
+    // HTTP task-detail routes need evidence rows, but they should still ask the
+    // service for them instead of reading persistence collections directly.
+    this.requireTask(taskId);
+    return [...this.artifacts.values()].filter((artifact) => artifact.taskId === taskId);
+  }
+
   recordVerification(actor: Actor, taskId: string, summary: string, evidence: string[]): TaskVerification {
     const task = this.requireTask(taskId);
     // Verification is recorded separately so completeTask can either accept new
@@ -408,6 +440,11 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
       verificationId: verification.id,
     });
     return verification;
+  }
+
+  listVerifications(taskId: string): TaskVerification[] {
+    this.requireTask(taskId);
+    return [...this.verifications.values()].filter((verification) => verification.taskId === taskId);
   }
 
   requestReview(actor: Actor, taskId: string, summary: string): TaskWithRelations {

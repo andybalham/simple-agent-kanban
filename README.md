@@ -16,12 +16,12 @@ Local Agent Kanban is an agent work console for a single developer working in on
 
 ## Current Status
 
-The repository is currently at **Phase 3 complete; Phase 4 next**.
+The repository is currently at **Phase 4 complete; Phase 5 next**.
 
-Implemented foundation, domain contract, SQLite persistence, and durable MCP workflows:
+Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, and the local HTTP API:
 
 - React and Vite web app shell.
-- Node HTTP API shell with `/health` and `/api/health`.
+- Node HTTP API with `/health`, `/api/health`, and Phase 4 workflow routes for projects, context, tasks, claims, events, artifacts, and verification.
 - MCP stdio entrypoint with `ping` plus the V1 project, context, task, claim, artifact, verification, review, and completion workflow tools.
 - Shared `src/core` and `src/db` boundaries.
 - TypeScript, ESLint, Prettier, and Vitest configuration.
@@ -32,6 +32,7 @@ Implemented foundation, domain contract, SQLite persistence, and durable MCP wor
 - SQLite-backed service implementation under `src/db` with seed data support and temporary database workflow tests.
 - MCP tool registration over the SQLite-backed service with structured results and domain validation errors.
 - MCP stdio smoke test covering project creation, context update, task creation, claim, artifact, verification, and completion.
+- HTTP route tests covering project/context/task creation, board state, claims, artifacts, verification, completion, claim release events, and completion validation parity.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
@@ -120,6 +121,38 @@ Example MCP server configuration:
 - Health: `http://127.0.0.1:4000/health`
 - API health: `http://127.0.0.1:4000/api/health`
 
+## HTTP API
+
+The React UI should call the local API under `/api`. HTTP routes are adapter code over the same shared service used by MCP, so validation, events, dependency rules, claims, and completion requirements stay consistent.
+
+Implemented Phase 4 routes:
+
+- `GET /api/projects`
+- `POST /api/projects`
+- `GET /api/projects/:projectId/context`
+- `PUT /api/projects/:projectId/context`
+- `GET /api/projects/:projectId/tasks`
+- `POST /api/projects/:projectId/tasks`
+- `GET /api/projects/:projectId/events`
+- `GET /api/projects/:projectId/claims?state=active|stale|released|all`
+- `GET /api/tasks?projectId=...&status=...&claimableOnly=true`
+- `GET /api/tasks/:taskId`
+- `PATCH /api/tasks/:taskId/dependencies`
+- `POST /api/tasks/:taskId/split`
+- `PATCH /api/tasks/:taskId/status`
+- `POST /api/tasks/:taskId/notes`
+- `GET /api/tasks/:taskId/claims`
+- `POST /api/tasks/:taskId/claims`
+- `GET /api/tasks/:taskId/artifacts`
+- `POST /api/tasks/:taskId/artifacts`
+- `GET /api/tasks/:taskId/verifications`
+- `POST /api/tasks/:taskId/verifications`
+- `POST /api/tasks/:taskId/review`
+- `POST /api/tasks/:taskId/complete`
+- `GET /api/events?projectId=...`
+- `POST /api/claims/:claimId/heartbeat`
+- `POST /api/claims/:claimId/release`
+
 ## Checks
 
 Run the test suite manually:
@@ -170,7 +203,7 @@ npm run format
 2. MCP contract and domain model.
 3. SQLite persistence.
 4. Durable MCP server implementation. **Complete.**
-5. Local HTTP API.
+5. Local HTTP API. **Complete.**
 6. React board UI.
 7. Project context UI.
 8. Agent activity and review visibility.

@@ -7,3 +7,5 @@ coverage/
 dev-server.*.log
 local.sqlite
 local.sqlite-*
+local-agent-kanban.sqlite
+local-agent-kanban.sqlite-*
