@@ -10,9 +10,9 @@ Primary goals:
 
 - Provide a React Kanban UI for viewing and editing agent work.
 - Expose MCP tools so trusted agents can create, claim, split, update, and complete tasks.
-- Keep task dependencies, claims, artifacts, verification, and activity history durable.
+- Keep task dependencies, claims, artifacts, verification, and activity history durable in the relevant project repository.
 - Run locally with a browser UI, local HTTP API, and separate MCP stdio process.
-- Use SQLite for V1 while keeping persistence ready for future Postgres support.
+- Use SQLite for V1 with a central registry database plus separate repository-local project databases, while keeping persistence ready for future Postgres support.
 
 Source-of-truth docs:
 
@@ -40,7 +40,9 @@ Keep these boundaries clear as features are added. The docs allow a future `apps
 - HTTP routes call shared domain services.
 - MCP tools call the same shared domain services.
 - Domain services call repository interfaces.
-- Repositories own database access.
+- Registry repositories own central project registration database access.
+- Project repositories own repository-local workflow database access.
+- A project database resolver maps canonical project IDs to `.local-agent-kanban/project.sqlite` inside the registered repo.
 - Do not duplicate workflow rules between MCP, HTTP, and UI code.
 - Do not put UI-oriented response shapes into MCP tool responses.
 - Keep database-specific SQL isolated under `src/db` or repository modules.
@@ -48,6 +50,10 @@ Keep these boundaries clear as features are added. The docs allow a future `apps
 Important product behavior to preserve:
 
 - The MCP contract is a first-class product interface.
+- The central database stores only active project registry metadata.
+- Project workflow data lives in the project repo database at `.local-agent-kanban/project.sqlite`.
+- Project IDs are stable across machines and clones because the canonical ID lives inside the project database.
+- Removing a project from the app unregisters it only; do not delete or mutate the project repo database.
 - Agents are trusted to create tasks.
 - Agent-created tasks default to `needs_grooming = true` unless created through an accepted split or completion workflow.
 - Human-created tasks default to `needs_grooming = false`.
@@ -65,7 +71,7 @@ Follow the dependency order in `docs/implementation-plan.md`:
 
 1. Foundation.
 2. Domain model and MCP contract.
-3. SQLite persistence.
+3. SQLite persistence with central registry and per-project databases.
 4. Durable MCP server implementation.
 5. Local HTTP API over the same services.
 6. React board UI.
@@ -149,7 +155,12 @@ Current local ports:
 
 V1 uses SQLite and should be implemented with Drizzle ORM. Keep schema and repository code Postgres-friendly:
 
+- Maintain a central registry database for project metadata only.
+- Store each project database at `.local-agent-kanban/project.sqlite` inside the project repository.
+- Keep project context, tasks, dependencies, claims, events, artifacts, and verification out of the central registry.
+- Resolve project IDs to project databases through a shared resolver used by HTTP and MCP workflows.
 - Use migrations from the beginning.
+- Keep central registry migrations separate from per-project database migrations.
 - Store task dependencies in a relational table.
 - Treat JSON metadata fields as escape hatches, not primary model storage.
 - Keep database access out of UI, MCP handlers, and HTTP route handlers.

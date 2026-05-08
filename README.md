@@ -2,23 +2,23 @@
 
 A personal, local-first Kanban console for trusted coding agents.
 
-Local Agent Kanban is an agent work console for a single developer working in one local workspace. It is designed to give coding agents a first-class MCP workflow while giving the human developer a clear browser UI for visibility, review, and control.
+Local Agent Kanban is an agent work console for a single developer working across local project repositories. It is designed to give coding agents a first-class MCP workflow while giving the human developer a clear browser UI for visibility, review, and control.
 
 ## Goals
 
 - Provide a React Kanban UI for viewing and editing project work.
-- Support multiple projects inside one local workspace.
+- Support multiple active projects through a local registry.
 - Let trusted coding agents create, claim, split, update, and complete tasks through MCP tools.
-- Store durable project context, tasks, dependencies, claims, artifacts, verification, and activity history.
+- Store durable project context, tasks, dependencies, claims, artifacts, verification, and activity history in each project repository.
 - Run as a plain local server opened in the browser.
-- Use SQLite for V1 while keeping the persistence boundary ready for future Postgres support.
+- Use SQLite for V1 with a central project registry database and separate repository-local project databases, while keeping the persistence boundary ready for future Postgres support.
 - Keep the MCP contract as a first-class product interface.
 
 ## Current Status
 
-The repository is currently at **Phase 4 complete; Phase 5 next**.
+The repository is currently at **Phase 5 complete; Phase 6 next**.
 
-Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, and the local HTTP API:
+Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, the local HTTP API, and the React board UI:
 
 - React and Vite web app shell.
 - Node HTTP API with `/health`, `/api/health`, and Phase 4 workflow routes for projects, context, tasks, claims, events, artifacts, and verification.
@@ -28,11 +28,12 @@ Implemented foundation, domain contract, SQLite persistence, durable MCP workflo
 - Local environment example in `.env.example`.
 - Dependency-free Phase 0 scaffold check.
 - Domain types, MCP tool schemas, validation helpers, service interfaces, and in-memory workflow tests for Phase 1.
-- Drizzle SQLite schema and migration SQL for projects, contexts, tasks, dependencies, claims, events, artifacts, and verification.
+- Drizzle SQLite schema and migration SQL for the current workflow tables.
 - SQLite-backed service implementation under `src/db` with seed data support and temporary database workflow tests.
 - MCP tool registration over the SQLite-backed service with structured results and domain validation errors.
 - MCP stdio smoke test covering project creation, context update, task creation, claim, artifact, verification, and completion.
 - HTTP route tests covering project/context/task creation, board state, claims, artifacts, verification, completion, claim release events, and completion validation parity.
+- Operational React board UI with project selector, task detail surface, task create/edit flows, status moves, claim release, and stale claim indicators.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
@@ -55,8 +56,8 @@ The current `src/*` layout is intentionally simple. The requirements allow movin
 The intended dependency flow is:
 
 ```text
-React UI -> HTTP API -> Domain services -> Repositories -> SQLite
-MCP tools -> Domain services -> Repositories -> SQLite
+React UI -> HTTP API -> Domain services -> Registry/project repositories -> SQLite
+MCP tools -> Domain services -> Registry/project repositories -> SQLite
 ```
 
 Core rules:
@@ -64,7 +65,12 @@ Core rules:
 - UI calls the HTTP API.
 - HTTP routes and MCP tools share the same domain services.
 - Domain services own workflow rules and validation.
-- Repositories own database access.
+- Registry repositories own central project registration data.
+- Project repositories own repository-local workflow data.
+- Each project repository stores its project database at `.local-agent-kanban/project.sqlite`.
+- Projects can be created, registered from an existing repository database, and unregistered from the app.
+- Removing a project from the app unregisters it from the central registry and leaves the project database untouched.
+- Project IDs are canonical, stable IDs stored inside each project database.
 - MCP responses should be structured for agents, not shaped for the UI.
 - Significant mutations should write immutable activity events.
 
@@ -88,7 +94,7 @@ Run the MCP server entrypoint:
 npm run dev:mcp
 ```
 
-By default the MCP process stores data in `./local-agent-kanban.sqlite`. Override that path for local agent configuration or tests with:
+The target persistence architecture uses a central registry database for active project metadata and project databases at `.local-agent-kanban/project.sqlite` inside registered repositories. The current implementation still uses the pre-refactor single database path. Override that current path for local agent configuration or tests with:
 
 ```powershell
 $env:LOCAL_AGENT_KANBAN_DB = 'C:\path\to\local-agent-kanban.sqlite'
@@ -201,10 +207,10 @@ npm run format
 
 1. Project foundation.
 2. MCP contract and domain model.
-3. SQLite persistence.
+3. SQLite persistence with central registry and per-project databases.
 4. Durable MCP server implementation. **Complete.**
 5. Local HTTP API. **Complete.**
-6. React board UI.
+6. React board UI. **Complete.**
 7. Project context UI.
 8. Agent activity and review visibility.
 9. Hardening and local polish.

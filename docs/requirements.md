@@ -4,16 +4,16 @@
 
 Build a personal, local-first Kanban web application that helps coding agents self-organize while giving the human developer clear visibility and control.
 
-The system is not a team SaaS board. It is an agent work console for a single developer working in one local workspace.
+The system is not a team SaaS board. It is an agent work console for a single developer working across local project repositories.
 
 ## Goals
 
 - Provide a React Kanban UI for viewing and editing project work.
-- Support multiple projects.
+- Support multiple active projects through a local project registry.
 - Let trusted coding agents create, claim, split, update, and complete tasks through MCP tools.
-- Store durable project, task, task dependency, context, claim, artifact, and activity history.
+- Store durable project registry metadata centrally, while storing each project's board data in that project's own repository database.
 - Run as a plain local server opened in the browser.
-- Use SQLite initially while keeping the persistence layer ready for future Postgres support.
+- Use SQLite initially with one central registry database and one versioned SQLite database per project, while keeping the persistence layer ready for future Postgres support.
 - Treat the MCP contract as a first-class product interface, not an implementation detail.
 
 ## Non-Goals for V1
@@ -50,15 +50,41 @@ The system is not a team SaaS board. It is an agent work console for a single de
 
 ### Project
 
-A project represents one body of work in the local workspace.
+A project represents one body of work in a local repository. The application can register and unregister projects as they become active or complete.
 
 Required fields:
 
 - `id`
 - `name`
 - `description`
+- `repo_path`
+- `project_db_path`
+- `lifecycle_status`
 - `created_at`
 - `updated_at`
+
+Project identity rules:
+
+- Project IDs must be stable across machines and clones.
+- The canonical project ID lives inside the project database, not only in the local central registry.
+- Registering an existing project repo must read the project ID from that repo's project database.
+- A local registry may assign internal registration metadata, but workflow APIs and persisted project data must use the canonical project ID.
+
+Project registry metadata:
+
+- The central application database stores only registry-level metadata needed to find and display projects.
+- Recommended registry fields are `project_id`, `name`, `description`, `repo_path`, `project_db_path`, `lifecycle_status`, `registered_at`, `last_opened_at`, and `updated_at`.
+- Recommended lifecycle statuses are `active` and `completed`.
+- The central registry must not store project tasks, project context, claims, artifacts, verification, task dependencies, or activity events.
+- Removing a project from the app unregisters it from the central registry only. It must not delete or mutate the project repository database.
+- Completed projects may remain registered with a completed lifecycle status or be unregistered from the app.
+
+Project database location:
+
+- Each project repository contains its own standard SQLite database path: `.local-agent-kanban/project.sqlite`.
+- The per-project database is intended to be versioned with the project repository.
+- The project database stores the canonical project record, project context, tasks, dependencies, claims, events, artifacts, and verification.
+- The standard path can be derived from `repo_path`; V1 should not require custom per-project database paths.
 
 Recommended context fields:
 
@@ -263,6 +289,8 @@ V1 tools:
 
 - `list_projects`
 - `create_project`
+- `register_project`
+- `unregister_project`
 - `get_project_context`
 - `update_project_context`
 - `list_tasks`
@@ -283,6 +311,10 @@ MCP tool responses should be structured, predictable, and useful to agents. Avoi
 
 Important MCP behavior:
 
+- `list_projects` lists projects from the central registry.
+- `create_project` creates a canonical project record in a repository-local project database and registers it in the central registry.
+- `register_project` adds an existing repository-local project database to the central registry by reading its canonical project ID.
+- `unregister_project` removes only the central registry entry and must not delete or mutate the project database.
 - Agent-created tasks are allowed.
 - Agent-created tasks should be marked with the creating agent identity.
 - Agent-created tasks should default to `needs_grooming = true` unless explicitly created as part of an accepted split or completion workflow.
@@ -302,7 +334,7 @@ The React UI should use a local HTTP API over the same domain service layer as t
 
 The HTTP API should support:
 
-- Project CRUD.
+- Project create, register, unregister, and lifecycle metadata updates.
 - Project context editing.
 - Task CRUD.
 - Task dependency CRUD and dependency graph queries.
@@ -367,14 +399,24 @@ Task detail should show:
 
 Use SQLite for V1.
 
+V1 persistence has two database scopes:
+
+- A central application registry database for the set of locally active projects.
+- A per-project SQLite database stored at `.local-agent-kanban/project.sqlite` inside each project repository.
+
+The central registry database is not the source of truth for project workflow data. It should contain only enough metadata to list, open, and unregister projects. Project workflow data belongs to the per-project database so it can travel with the repo and be versioned with it.
+
 Persistence must be structured so Postgres can be introduced later:
 
 - Use migrations from the beginning.
+- Maintain separate migrations for the central registry schema and the per-project schema.
 - Avoid scattering database-specific SQL across feature code.
 - Keep schema and repository/data-access code isolated.
 - Prefer data types and query patterns that can map cleanly to Postgres.
 - Treat JSON fields as metadata escape hatches, not as the primary model.
 - Store task dependencies in a relational table, not only in task metadata JSON.
+- Route each workflow operation to the correct project database after resolving the project from the central registry.
+- Keep cross-project dependencies out of V1; task dependencies remain within one project database.
 
 Database toolkit:
 
@@ -408,13 +450,17 @@ Required architectural boundary:
 - MCP tools call shared domain services.
 - HTTP API calls shared domain services.
 - Domain services call repositories.
-- Repositories own database access.
+- Registry repositories own central project registration database access.
+- Project repositories own per-project workflow database access.
+- A project database resolver sits between service workflows and project repositories so MCP and HTTP callers never open database files directly.
 
 Runtime boundary:
 
 - The HTTP API and React dev server may run together for local development.
 - The MCP server should run as a separate local process with its own entrypoint.
 - The separate MCP process must use the same shared domain services and repository layer as the HTTP API.
+- The HTTP API and MCP process must point at the same central registry database so they agree on active projects.
+- Once a project is resolved from the central registry, both HTTP and MCP workflows must use that project's repository-local database.
 
 ## Implementation Planning Requirements
 
@@ -429,7 +475,7 @@ At minimum, the plan should make these dependencies clear:
 
 - Project foundation precedes domain, persistence, MCP, HTTP, and UI work.
 - Domain types, validation, and service contracts precede durable persistence and API wiring.
-- SQLite schema and repositories precede durable MCP and HTTP workflows.
+- Central registry schema, per-project schema, project database resolution, and repositories precede durable MCP and HTTP workflows.
 - MCP and HTTP both depend on shared domain services rather than duplicating business logic.
 - The React UI depends on the HTTP API for board state, task details, claims, events, artifacts, and verification.
 - Activity, claims, and review views depend on events, claims, artifacts, and verification being recorded consistently by MCP and HTTP workflows.
@@ -440,5 +486,5 @@ At minimum, the plan should make these dependencies clear:
 - The app runs as a plain local server.
 - The human opens the UI in a browser.
 - Agents connect to the separate MCP server process locally.
-- V1 assumes one local workspace.
+- V1 assumes one local application registry that can point at multiple local project repositories.
 - V1 does not need login.
