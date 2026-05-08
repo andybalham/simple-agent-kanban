@@ -12,6 +12,8 @@
     "dev:mcp": "tsx src/mcp/index.ts",
     "cleanup:dev": "node tools/cleanup-dev-artifacts.mjs",
     "migrate:single-db": "tsx tools/migrate-single-db-to-project-dbs.ts",
+    "backup:registry": "tsx tools/backup-registry.ts",
+    "check:phase8": "tsx tools/check-phase8.ts",
     "build": "tsc --noEmit && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",

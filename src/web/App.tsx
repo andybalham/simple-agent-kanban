@@ -179,6 +179,7 @@ export function App() {
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectRepoPath, setNewProjectRepoPath] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isBoardLoading, setIsBoardLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -222,6 +223,7 @@ export function App() {
     if (!projectId) {
       return;
     }
+    setIsBoardLoading(true);
     setError(null);
     try {
       const [taskData, claimData] = await Promise.all([
@@ -235,8 +237,26 @@ export function App() {
       setClaims(claimData.claims.filter((claim) => claim.releasedAt === null));
     } catch (apiError) {
       setError(errorMessage(apiError));
+    } finally {
+      setIsBoardLoading(false);
     }
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isEditingText =
+        target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (event.key === 'Escape' && selectedTaskId && !isEditingText) {
+        setSelectedTaskId(null);
+      }
+      if ((event.key === 'r' || event.key === 'R') && !isEditingText && selectedProjectId) {
+        void refreshBoard(selectedProjectId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [refreshBoard, selectedProjectId, selectedTaskId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -448,7 +468,8 @@ export function App() {
         <div className="project-tools">
           <label className="field field--inline">
             <span>Project</span>
-            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} disabled={projects.length === 0}>
+              {projects.length === 0 && <option value="">No registered projects</option>}
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
@@ -476,60 +497,75 @@ export function App() {
         </form>
       )}
 
-      {error && <div className="notice notice--error">{error}</div>}
+      {error && (
+        <div className="notice notice--error" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => void recoverFromError()} disabled={isSaving}>
+            Retry
+          </button>
+        </div>
+      )}
 
       <section className="workspace" aria-label="Kanban workspace">
         <section className="board-surface" aria-label="Task board">
           <div className="board-header">
             <div>
               <h2>{selectedProject?.name ?? 'No project selected'}</h2>
-              <p>{boardSubtitle(isLoading, tasks.length, claims.filter(isStaleClaim).length)}</p>
+              <p>{boardSubtitle(isLoading || isBoardLoading, projects.length, tasks.length, claims.filter(isStaleClaim).length)}</p>
               {selectedProject && <p className="project-path">{selectedProject.repoPath}</p>}
             </div>
-            <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving}>
-              Refresh
+            <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving || isBoardLoading}>
+              {isBoardLoading ? 'Refreshing' : 'Refresh'}
             </button>
           </div>
 
-          <OperationsConsole
-            activeClaims={activeClaims}
-            staleClaims={staleClaims}
-            reviewTasks={reviewTasks}
-            groomingTasks={groomingTasks}
-            events={recentActivity}
-            taskById={taskById}
-            selectedTaskId={selectedTaskId}
-            disabled={isSaving}
-            onSelectTask={setSelectedTaskId}
-            onReleaseClaim={(claimId) => void releaseClaim(claimId)}
-          />
+          {isLoading ? (
+            <LoadingBoard />
+          ) : projects.length === 0 ? (
+            <EmptyProjectState onCreate={() => setIsCreatingProject(true)} />
+          ) : (
+            <>
+              <OperationsConsole
+                activeClaims={activeClaims}
+                staleClaims={staleClaims}
+                reviewTasks={reviewTasks}
+                groomingTasks={groomingTasks}
+                events={recentActivity}
+                taskById={taskById}
+                selectedTaskId={selectedTaskId}
+                disabled={isSaving}
+                onSelectTask={setSelectedTaskId}
+                onReleaseClaim={(claimId) => void releaseClaim(claimId)}
+              />
 
-          <div className="columns">
-            {columns.map((column) => {
-              const columnTasks = tasks.filter((task) => task.status === column.status);
-              return (
-                <section className="column" key={column.status} aria-label={`${column.label} column`}>
-                  <h2 className="column__title">
-                    {column.label}
-                    <span className="column__count">{columnTasks.length}</span>
-                  </h2>
-                  <div className="column__body">
-                    {columnTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        staleClaims={staleClaimsByTask.get(task.id) ?? []}
-                        isSelected={task.id === selectedTaskId}
-                        onSelect={() => setSelectedTaskId(task.id)}
-                        onMove={(status) => void moveTask(task, status)}
-                      />
-                    ))}
-                    {columnTasks.length === 0 && <div className="empty-column">No tasks</div>}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+              <div className={isBoardLoading ? 'columns columns--loading' : 'columns'} aria-busy={isBoardLoading}>
+                {columns.map((column) => {
+                  const columnTasks = tasks.filter((task) => task.status === column.status);
+                  return (
+                    <section className="column" key={column.status} aria-label={`${column.label} column`}>
+                      <h2 className="column__title">
+                        {column.label}
+                        <span className="column__count">{columnTasks.length}</span>
+                      </h2>
+                      <div className="column__body">
+                        {columnTasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            staleClaims={staleClaimsByTask.get(task.id) ?? []}
+                            isSelected={task.id === selectedTaskId}
+                            onSelect={() => setSelectedTaskId(task.id)}
+                            onMove={(status) => void moveTask(task, status)}
+                          />
+                        ))}
+                        {columnTasks.length === 0 && <div className="empty-column">No tasks</div>}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
 
         <aside className="side-panel" aria-label="Task controls">
@@ -594,6 +630,14 @@ export function App() {
       </section>
     </main>
   );
+
+  async function recoverFromError() {
+    if (selectedProjectId) {
+      await Promise.all([refreshBoard(selectedProjectId), loadProjectContext(selectedProjectId), loadProjectEvents(selectedProjectId)]);
+      return;
+    }
+    await loadProjects();
+  }
 }
 
 function OperationsConsole({
@@ -677,6 +721,33 @@ function OperationsConsole({
           <TaskQueue tasks={groomingTasks} selectedTaskId={selectedTaskId} emptyText="" onSelectTask={onSelectTask} compact />
         </section>
       )}
+    </section>
+  );
+}
+
+function LoadingBoard() {
+  return (
+    <div className="loading-board" aria-label="Loading board">
+      {[0, 1, 2, 3, 4, 5].map((item) => (
+        <div className="loading-column" key={item}>
+          <span />
+          <strong />
+          <p />
+          <p />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyProjectState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section className="empty-state" aria-label="No registered projects">
+      <h2>No registered projects</h2>
+      <p>Create a local project database here, or register an existing repository through the HTTP API or MCP.</p>
+      <button type="button" onClick={onCreate}>
+        New Project
+      </button>
     </section>
   );
 }
@@ -1182,9 +1253,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { 'content-type': 'application/json', ...init?.headers },
   });
-  const data = (await response.json()) as { ok: boolean; error?: { message: string } } & T;
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error?.message ?? `Request failed with ${response.status}`);
+  const text = await response.text();
+  let data: ({ ok: boolean; error?: { message: string; details?: string[] } } & T) | null = null;
+  try {
+    data = text ? (JSON.parse(text) as { ok: boolean; error?: { message: string; details?: string[] } } & T) : null;
+  } catch {
+    throw new Error(`Request returned non-JSON response (${response.status}). Confirm the local API is running on port 4000.`);
+  }
+  if (!response.ok || data?.ok === false) {
+    const details = data?.error?.details?.length ? ` ${data.error.details.join(' ')}` : '';
+    throw new Error(`${data?.error?.message ?? `Request failed with ${response.status}`}${details}`);
+  }
+  if (data === null) {
+    throw new Error(`Request returned an empty response (${response.status}).`);
   }
   return data;
 }
@@ -1282,9 +1363,12 @@ function statusLabel(status: TaskStatus): string {
   return columns.find((column) => column.status === status)?.label ?? status;
 }
 
-function boardSubtitle(isLoading: boolean, taskCount: number, staleCount: number): string {
+function boardSubtitle(isLoading: boolean, projectCount: number, taskCount: number, staleCount: number): string {
   if (isLoading) {
     return 'Loading local board state from the HTTP API.';
+  }
+  if (projectCount === 0) {
+    return 'No projects are registered in the local registry yet.';
   }
   if (taskCount === 0) {
     return 'No active tasks yet. Create one here or through MCP.';

@@ -1,10 +1,12 @@
 import Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+
+import { createSqliteKanbanService } from './sqliteService.ts';
 
 describe('single database migration script', () => {
   it('copies legacy project workflow rows into registry plus repository-local databases', () => {
@@ -117,3 +119,72 @@ describe('single database migration script', () => {
     }
   });
 });
+
+describe('Phase 8 local data scripts', () => {
+  it('sanity-checks registry and repository-local databases after migrations', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'local-agent-kanban-phase8-check-'));
+    const registryPath = join(directory, 'registry.sqlite');
+    const repoPath = join(directory, 'repo');
+
+    try {
+      const service = createService(registryPath);
+      const project = service.createProject({
+        actor: { type: 'human', id: 'phase8-test' },
+        name: 'Phase 8 Check',
+        repoPath,
+      });
+      service.createTask({ actor: { type: 'human', id: 'phase8-test' }, projectId: project.id, title: 'Check migrations' });
+      service.close();
+
+      const output = execFileSync(process.execPath, [resolve('node_modules/tsx/dist/cli.mjs'), resolve('tools/check-phase8.ts'), registryPath], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+
+      expect(output).toContain('Phase 8 database sanity check passed');
+      expect(output).toContain('Registered projects checked: 1');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('exports the registry database and recovery manifest', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'local-agent-kanban-phase8-backup-'));
+    const registryPath = join(directory, 'registry.sqlite');
+    const repoPath = join(directory, 'repo');
+    const backupDirectory = join(directory, 'backups');
+
+    try {
+      const service = createService(registryPath);
+      const project = service.createProject({
+        actor: { type: 'human', id: 'phase8-test' },
+        name: 'Phase 8 Backup',
+        repoPath,
+      });
+      service.close();
+
+      const output = execFileSync(
+        process.execPath,
+        [resolve('node_modules/tsx/dist/cli.mjs'), resolve('tools/backup-registry.ts'), registryPath, backupDirectory],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+        },
+      );
+
+      const sqlitePath = output.match(/Registry backup written: (.+\.sqlite)/)?.[1]?.trim();
+      const manifestPath = output.match(/Registry manifest written: (.+\.json)/)?.[1]?.trim();
+      expect(sqlitePath && existsSync(sqlitePath)).toBe(true);
+      expect(manifestPath && existsSync(manifestPath)).toBe(true);
+
+      const manifest = JSON.parse(readFileSync(manifestPath!, 'utf8')) as { projects: Array<{ projectId: string }> };
+      expect(manifest.projects.map((entry) => entry.projectId)).toContain(project.id);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+function createService(registryPath: string) {
+  return createSqliteKanbanService(registryPath);
+}

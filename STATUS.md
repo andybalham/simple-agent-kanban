@@ -4,9 +4,9 @@ This file tracks implementation phase completion for Local Agent Kanban. The det
 
 ## Summary
 
-Current phase: **Phase 7 complete; Phase 8 next**
+Current phase: **Phase 8 complete**
 
-Phase 7 is complete. The next implementation work is hardening and local polish now that the UI exposes board, context, activity, claims, review, grooming, artifacts, and verification workflows.
+Phase 8 is complete. The app now has the local polish needed for daily use: retryable UI errors, loading and empty states, registry backup/export, migration sanity checks, and recovery documentation for project registration and repository-local databases.
 
 Architecture note: Phase 2 persistence now uses a central project registry database plus separate repository-local project databases at `.local-agent-kanban/project.sqlite`.
 
@@ -22,7 +22,7 @@ Architecture note: Phase 2 persistence now uses a central project registry datab
 | 5 | React Board UI | Complete | Built the operational Kanban board, project selector, task detail surface, task create/edit flows, status updates, claim release action, and stale claim indicators. |
 | 6 | Project Context UI | Complete | Added context editing for overview, agent instructions, repo metadata, commands, coding conventions, agent preview, and context update activity. |
 | 7 | Agent Activity and Review Visibility | Complete | Added activity feed, active and stale claims panels, review queue, task evidence detail, and grooming visibility. |
-| 8 | Hardening and Local Polish | Pending | Add robust empty/loading/error states, backup/export support, migration checks, recovery docs, and local workflow polish. |
+| 8 | Hardening and Local Polish | Complete | Added robust empty/loading/error states, keyboard-friendly board recovery actions, registry backup/export support, migration checks, recovery docs, and local workflow polish. |
 
 ## Phase 0 Evidence
 
@@ -209,10 +209,24 @@ Browser smoke test:
 
 Last verified: 2026-05-08.
 
-## Next Phase Exit Criteria
+## Phase 8 Evidence
 
-Phase 8 is complete when:
+Phase 8 deliverables present:
 
-- Fresh clone setup is documented and tested.
-- Existing central and project SQLite databases migrate cleanly.
-- Common agent workflow failures produce understandable errors.
+- `src/web/App.tsx` includes retryable error handling, no-project empty state, board loading state, defensive non-JSON API error reporting, and keyboard-friendly board refresh/task close behavior.
+- `tools/backup-registry.ts` writes a central registry SQLite backup plus a JSON manifest of registered project database locations.
+- `tools/check-phase8.ts` reapplies idempotent central/project migrations, runs SQLite `quick_check`, verifies expected tables, and checks registered project databases contain their canonical project row.
+- `README.md` documents fresh local setup, project create/register/unregister/reopen behavior, registry backup/export, project database backup guidance, migration sanity checks, MCP configuration, and cleanup/recovery.
+- `src/db/migrationScript.test.ts` covers the Phase 8 check and backup scripts against temporary SQLite registry/project databases.
+
+Phase 8 verification commands:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run check:phase0
+npm run check:phase8
+```
+
+Last verified: 2026-05-08.

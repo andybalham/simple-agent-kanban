@@ -16,9 +16,9 @@ Local Agent Kanban is an agent work console for a single developer working acros
 
 ## Current Status
 
-The repository is currently at **Phase 6 complete; Phase 7 next**.
+The repository is currently at **Phase 8 complete**.
 
-Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, the local HTTP API, the React board UI, and the project context UI:
+Implemented foundation, domain contract, SQLite persistence, durable MCP workflows, the local HTTP API, the React board UI, project context UI, operations visibility, and local hardening:
 
 - React and Vite web app shell.
 - Node HTTP API with `/health`, `/api/health`, and Phase 4 workflow routes for projects, context, tasks, claims, events, artifacts, and verification.
@@ -35,6 +35,8 @@ Implemented foundation, domain contract, SQLite persistence, durable MCP workflo
 - HTTP route tests covering project/context/task creation, board state, claims, artifacts, verification, completion, claim release events, and completion validation parity.
 - Operational React board UI with project selector, task detail surface, task create/edit flows, status moves, claim release, and stale claim indicators.
 - Project context editor with Markdown fields, repo metadata, workflow commands, an agent-facing preview, and context update activity visibility.
+- Agent operations console with review queue, active and stale claims, activity feed, grooming visibility, artifacts, and verification evidence.
+- Phase 8 local polish with loading, empty, retryable error states, keyboard-friendly board refresh/task close behavior, registry backup/export, and database migration sanity checks.
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
@@ -111,6 +113,38 @@ npm run dev:mcp
 ```
 
 Set `LOCAL_AGENT_KANBAN_SEED=true` when starting the MCP process to create the local seed project if it does not already exist.
+
+## Project Registration And Recovery
+
+Create a new project from the UI or MCP `create_project` tool by providing a local repository path. The app creates `.local-agent-kanban/project.sqlite` inside that repository, stores the canonical project ID there, and registers the project in the central registry database.
+
+Register an existing project repository when its `.local-agent-kanban/project.sqlite` already exists:
+
+```powershell
+curl -X POST http://127.0.0.1:4000/api/projects/register ^
+  -H "content-type: application/json" ^
+  -d "{\"actor\":{\"type\":\"human\",\"id\":\"local-cli\"},\"repoPath\":\"C:\\path\\to\\repo\"}"
+```
+
+Unregistering removes only the central registry entry. It does not delete or mutate `.local-agent-kanban/project.sqlite`, so the repository can be reopened later through the same register route or MCP `register_project`.
+
+Back up the central registry and export a JSON manifest of registered project database locations:
+
+```bash
+npm run backup:registry -- ./local-agent-kanban-registry.sqlite ./backups
+```
+
+Project databases live with their repositories. Back them up with the repository, or copy `.local-agent-kanban/project.sqlite` while the local API and MCP server are stopped. Run cleanup first if a dev server may still have SQLite files open:
+
+```bash
+npm run cleanup:dev
+```
+
+Check that the central registry and all registered project databases can accept the current migrations and pass SQLite sanity checks:
+
+```bash
+npm run check:phase8 -- ./local-agent-kanban-registry.sqlite
+```
 
 To migrate data from the earlier single-database layout, pass the legacy database and the target registry database:
 
@@ -202,6 +236,8 @@ Script reference:
 - `npm run build` runs TypeScript checking and the Vite production build.
 - `npm run check:phase0` verifies that the foundation scaffold files and scripts still exist.
 - `npm run cleanup:dev` stops local dev processes on the default ports and removes generated default dev database/log artifacts.
+- `npm run backup:registry` writes a SQLite registry backup plus a JSON manifest under `./backups` by default.
+- `npm run check:phase8` reapplies idempotent migrations and runs SQLite sanity checks for the central registry and registered project databases.
 
 Run the Phase 0 scaffold check:
 
@@ -230,8 +266,8 @@ npm run format
 4. Durable MCP server implementation. **Complete.**
 5. Local HTTP API. **Complete.**
 6. React board UI. **Complete.**
-7. Project context UI.
-8. Agent activity and review visibility.
-9. Hardening and local polish.
+7. Project context UI. **Complete.**
+8. Agent activity and review visibility. **Complete.**
+9. Hardening and local polish. **Complete.**
 
 Build the MCP contract and domain services before durable persistence, HTTP workflows, or UI behavior. The app should be useful to agents before it is visually complete.
