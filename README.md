@@ -88,6 +88,14 @@ Run the local web app and API:
 npm run dev
 ```
 
+Clean up the local dev server and generated default registry database:
+
+```bash
+npm run cleanup:dev
+```
+
+This stops the recorded dev process tree and any listeners on the default local ports before removing `local-agent-kanban-registry.sqlite` and dev-server logs. That order matters on Windows because SQLite files stay locked while the API process has an open database connection.
+
 Run the MCP server entrypoint:
 
 ```bash
@@ -192,6 +200,7 @@ Script reference:
 - `npm run test` runs the Vitest test suite once.
 - `npm run build` runs TypeScript checking and the Vite production build.
 - `npm run check:phase0` verifies that the foundation scaffold files and scripts still exist.
+- `npm run cleanup:dev` stops local dev processes on the default ports and removes generated default dev database/log artifacts.
 
 Run the Phase 0 scaffold check:
 

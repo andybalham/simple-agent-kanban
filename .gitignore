@@ -9,3 +9,5 @@ local.sqlite
 local.sqlite-*
 local-agent-kanban.sqlite
 local-agent-kanban.sqlite-*
+local-agent-kanban-registry.sqlite
+local-agent-kanban-registry.sqlite-*

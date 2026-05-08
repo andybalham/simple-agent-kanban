@@ -124,6 +124,18 @@ Run the MCP server entrypoint:
 npm run dev:mcp
 ```
 
+Clean up after local dev server or browser smoke runs:
+
+```bash
+npm run cleanup:dev
+```
+
+Use this before manually hunting for Node processes or deleting temporary SQLite files. The script stops the recorded dev process tree and default local port listeners before removing generated default registry/log artifacts, which avoids repeated Windows SQLite file-lock cleanup work. For a known temporary smoke repo, pass it explicitly:
+
+```bash
+npm run cleanup:dev -- --repo C:\tmp\local-agent-kanban-phase5-browser-smoke
+```
+
 Run checks before handing off meaningful code changes:
 
 ```bash
