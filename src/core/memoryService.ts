@@ -5,6 +5,7 @@ import {
   type EventType,
   type Project,
   type ProjectContext,
+  type ProjectLifecycleStatus,
   type Task,
   type TaskArtifact,
   type TaskClaim,
@@ -19,6 +20,7 @@ import type {
   CreateTaskInput,
   ListTasksInput,
   LocalAgentKanbanService,
+  RegisterProjectInput,
   SplitTaskInput,
   UpdateTaskInput,
 } from './services.ts';
@@ -94,16 +96,38 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
       id: this.nextId('project'),
       name,
       description: input.description?.trim() ?? '',
+      repoPath: input.repoPath,
+      projectDbPath: `${input.repoPath}/.local-agent-kanban/project.sqlite`,
+      lifecycleStatus: 'active',
       createdAt: now,
       updatedAt: now,
     };
 
     this.projects.set(project.id, project);
-    this.contexts.set(project.id, defaultContext(project.id, now));
+    this.contexts.set(project.id, { ...defaultContext(project.id, now), repoPath: input.repoPath });
     // Project creation is a significant mutation, so it writes immutable history
     // immediately. Future database implementations must make this transactional.
     this.writeEvent(input.actor, project.id, null, 'project.created', `Project created: ${project.name}`, {});
     return project;
+  }
+
+  registerProject(input: RegisterProjectInput): Project {
+    const existing = [...this.projects.values()].find((project) => project.repoPath === input.repoPath);
+    invariant(existing !== undefined, 'project_database_not_found', `Project database not found for repo: ${input.repoPath}`);
+    return existing;
+  }
+
+  unregisterProject(_actor: Actor, projectId: string): { projectId: string; unregistered: true } {
+    this.requireProject(projectId);
+    this.projects.delete(projectId);
+    return { projectId, unregistered: true };
+  }
+
+  updateProjectLifecycle(_actor: Actor, projectId: string, lifecycleStatus: ProjectLifecycleStatus): Project {
+    const existing = this.requireProject(projectId);
+    const updated = { ...existing, lifecycleStatus, updatedAt: new Date() };
+    this.projects.set(projectId, updated);
+    return updated;
   }
 
   getProjectContext(projectId: string): ProjectContext {

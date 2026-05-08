@@ -43,6 +43,7 @@ export const actorSchema = z.object({
 export const taskStatusSchema = z.enum(taskStatuses);
 export const taskPrioritySchema = z.enum(taskPriorities);
 export const artifactKindSchema = z.enum(artifactKinds);
+export const projectLifecycleStatusSchema = z.enum(['active', 'completed']);
 
 /**
  * Common primitives keep validation intent visible. IDs are currently simple

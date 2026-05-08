@@ -28,6 +28,7 @@ describe('HTTP API workflow', () => {
     const project = await api(baseUrl, 'POST', '/api/projects', {
       actor: human,
       name: 'HTTP Project',
+      repoPath: 'C:/tmp/local-agent-kanban-http',
       description: 'Created through the local API.',
     });
     const projectId = stringField(objectField(project, 'project'), 'id');
@@ -86,7 +87,11 @@ describe('HTTP API workflow', () => {
 
   it('keeps HTTP status moves on the same completion and event rules as MCP', async () => {
     const { baseUrl } = await startApi();
-    const project = await api(baseUrl, 'POST', '/api/projects', { actor: human, name: 'Rules Project' });
+    const project = await api(baseUrl, 'POST', '/api/projects', {
+      actor: human,
+      name: 'Rules Project',
+      repoPath: 'C:/tmp/local-agent-kanban-http-rules',
+    });
     const projectId = stringField(objectField(project, 'project'), 'id');
     const created = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
       actor: human,
@@ -116,7 +121,11 @@ describe('HTTP API workflow', () => {
 
   it('updates editable task fields through the shared service', async () => {
     const { service, baseUrl } = await startApi();
-    const project = await api(baseUrl, 'POST', '/api/projects', { actor: human, name: 'Edit Project' });
+    const project = await api(baseUrl, 'POST', '/api/projects', {
+      actor: human,
+      name: 'Edit Project',
+      repoPath: 'C:/tmp/local-agent-kanban-http-edit',
+    });
     const projectId = stringField(objectField(project, 'project'), 'id');
     const created = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
       actor: human,

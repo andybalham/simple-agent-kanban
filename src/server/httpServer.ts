@@ -9,6 +9,7 @@ import {
   idSchema,
   mcpToolSchemas,
   projectContextInputSchema,
+  projectLifecycleStatusSchema,
   taskStatusSchema,
   updateTaskBaseSchema,
   type LocalAgentKanbanService,
@@ -38,6 +39,11 @@ const releaseClaimSchema = z.object({ actor: actorSchema });
 const statusUpdateSchema = z.object({
   actor: actorSchema,
   status: taskStatusSchema,
+});
+
+const lifecycleUpdateSchema = z.object({
+  actor: actorSchema,
+  lifecycleStatus: projectLifecycleStatusSchema,
 });
 
 /**
@@ -87,6 +93,13 @@ async function routeRequest(service: LocalAgentKanbanService, request: IncomingM
     return;
   }
 
+  if (request.method === 'POST' && parts.length === 3 && parts[1] === 'projects' && parts[2] === 'register') {
+    const input = mcpToolSchemas.register_project.input.parse(await readJson(request));
+    const project = service.registerProject(input);
+    sendJson(response, 200, { ok: true, project });
+    return;
+  }
+
   if (parts[1] === 'projects' && parts[2]) {
     await routeProjectRequest(service, request, response, parts[2], parts.slice(3), url);
     return;
@@ -132,6 +145,20 @@ async function routeProjectRequest(
 ): Promise<void> {
   if (request.method === 'GET' && rest.length === 1 && rest[0] === 'context') {
     sendJson(response, 200, { ok: true, context: service.getProjectContext(projectId) });
+    return;
+  }
+
+  if (request.method === 'DELETE' && rest.length === 0) {
+    const body = z.object({ actor: actorSchema }).parse(await readJson(request));
+    const result = service.unregisterProject(body.actor, projectId);
+    sendJson(response, 200, { ok: true, ...result });
+    return;
+  }
+
+  if (request.method === 'PATCH' && rest.length === 1 && rest[0] === 'lifecycle') {
+    const body = lifecycleUpdateSchema.parse(await readJson(request));
+    const project = service.updateProjectLifecycle(body.actor, projectId, body.lifecycleStatus);
+    sendJson(response, 200, { ok: true, project });
     return;
   }
 

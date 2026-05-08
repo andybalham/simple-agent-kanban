@@ -12,7 +12,7 @@ The phases are ordered by dependency, not just preference:
 
 1. **Foundation** must exist before feature work: project layout, TypeScript, test runner, React shell, server shell, MCP shell, and shared `core`/`db` boundaries.
 2. **Domain and MCP contract** must define the workflow rules before persistence, HTTP, or UI code can safely depend on them.
-3. **SQLite persistence** depends on the domain model and repository contracts, then makes the workflows durable.
+3. **SQLite persistence** depends on the domain model and repository contracts, then makes the workflows durable through a central project registry database plus one repository-local project database per project.
 4. **MCP server implementation** depends on durable domain services so agents exercise the real workflow.
 5. **HTTP API** depends on the same durable domain services so the UI and MCP stay behaviorally consistent.
 6. **React board UI** depends on HTTP board/task/claim endpoints.
@@ -86,6 +86,8 @@ Initial MCP tools:
 
 - `list_projects`
 - `create_project`
+- `register_project`
+- `unregister_project`
 - `get_project_context`
 - `update_project_context`
 - `list_tasks`
@@ -104,6 +106,7 @@ Initial MCP tools:
 Important decisions to encode:
 
 - Agents are trusted to create tasks.
+- Projects can be created into repository-local databases, registered from existing repository-local databases, and unregistered without deleting repo data.
 - Human-created tasks default to `needs_grooming = false`.
 - Agent-created tasks default to `needs_grooming = true` unless created through an accepted split or completion workflow.
 - Split tasks remain flat.
@@ -126,7 +129,7 @@ Exit criteria:
 
 ## Phase 2: SQLite Persistence
 
-Goal: make the domain durable using SQLite with a Postgres-friendly boundary.
+Goal: make the domain durable using SQLite with a Postgres-friendly boundary and a clear split between application registry data and project-owned workflow data.
 
 Depends on:
 
@@ -141,18 +144,30 @@ Unblocks:
 Tasks:
 
 - Add Drizzle ORM.
-- Create Drizzle migrations.
-- Implement tables for projects, tasks, claims, events, artifacts, and verification.
-- Implement repository interfaces.
-- Wire domain services to SQLite repositories.
+- Create Drizzle migrations for the central registry database.
+- Create Drizzle migrations for the per-project database.
+- Implement a central project registry schema for active project metadata only.
+- Implement a per-project schema for the canonical project record, project context, tasks, dependencies, claims, events, artifacts, and verification.
+- Store each project database at `.local-agent-kanban/project.sqlite` inside the project repository.
+- Add project registration workflows that create or register a project repository database and record its `repo_path` in the central registry.
+- Add project unregister workflows that remove only the central registry entry and leave the project repository database untouched.
+- Implement stable project IDs stored inside the project database and used by MCP, HTTP, and UI workflows.
+- Implement repository interfaces for the central registry and per-project workflow data.
+- Implement a project database resolver that maps a canonical project ID to the correct project repository database.
+- Wire domain services to SQLite repositories through the resolver.
 - Add seed data for local development.
 - Add tests against a temporary SQLite database.
 
-Recommended tables:
+Recommended central registry tables:
+
+- `project_registry`
+
+Recommended per-project tables:
 
 - `projects`
 - `project_contexts`
 - `tasks`
+- `task_dependencies`
 - `task_claims`
 - `task_events`
 - `task_artifacts`
@@ -160,13 +175,18 @@ Recommended tables:
 
 Deliverables:
 
-- Local SQLite database is created through Drizzle migrations.
-- Domain service tests pass against SQLite.
+- Central registry and per-project SQLite databases are created through Drizzle migrations.
+- Domain service tests pass against SQLite across multiple temporary project repositories.
 - Event writing is transactional with the state change it describes.
+- Project workflow data is stored only in the repository-local project database.
+- The central registry stores only project registration metadata.
 
 Exit criteria:
 
-- A project can be created, populated with context, given tasks, claimed by an agent, updated, split, and completed durably.
+- A project can be registered, unregistered, and reopened from its repository-local database.
+- A project can be created, populated with context, given tasks, claimed by an agent, updated, split, and completed durably in its project database.
+- Removing a project from the app deletes no project workflow data.
+- A second clone or machine can recover the same canonical project ID from the project database.
 - Database-specific code is isolated in `db` or repository modules.
 
 ## Phase 3: MCP Server Implementation
@@ -176,7 +196,7 @@ Goal: expose the real durable workflows to agents.
 Depends on:
 
 - Phase 1 MCP schemas and workflow rules.
-- Phase 2 SQLite-backed services and repositories.
+- Phase 2 SQLite-backed registry, project database resolver, services, and repositories.
 
 Unblocks:
 
@@ -194,7 +214,7 @@ Tasks:
 
 Deliverables:
 
-- MCP server runs independently from the HTTP API while sharing domain and database layers.
+- MCP server runs independently from the HTTP API while sharing domain, registry, project database resolver, and repository layers.
 - Agents can list projects, read context, create tasks, claim tasks, split tasks, record work, and complete tasks.
 - MCP tool results include IDs and current state needed for follow-up calls.
 
@@ -228,6 +248,7 @@ Unblocks:
 Tasks:
 
 - Add HTTP routes for projects, context, tasks, claims, events, artifacts, and verification.
+- Add HTTP routes for project registration, unregistration, and lifecycle metadata updates.
 - Reuse domain services for all mutations.
 - Add API validation using the same schemas where practical.
 - Add integration tests for key routes.
@@ -362,8 +383,9 @@ Tasks:
 - Add empty states.
 - Add loading states.
 - Add keyboard-friendly task workflows where useful.
-- Add database backup/export command.
-- Add import/export for project data if practical.
+- Add registry backup/export command.
+- Add project database backup/export guidance if practical.
+- Add documentation for registering, unregistering, and reopening project repositories.
 - Add migration sanity checks.
 - Add documentation for local setup and agent configuration.
 
@@ -374,7 +396,7 @@ Deliverables:
 Exit criteria:
 
 - Fresh clone setup is documented and tested.
-- Existing SQLite database migrates cleanly.
+- Existing central and project SQLite databases migrate cleanly.
 - Common agent workflow failures produce understandable errors.
 
 ## Suggested Early Test Scenarios
@@ -392,7 +414,7 @@ Exit criteria:
 
 1. Define domain types and MCP schemas.
 2. Implement in-memory domain service tests.
-3. Add SQLite schema and repositories.
+3. Add central registry schema, per-project schema, database resolver, and repositories.
 4. Wire MCP tools to durable services.
 5. Add HTTP API over the same services.
 6. Build the minimal board UI.
@@ -404,6 +426,6 @@ Exit criteria:
 - State transitions are tested.
 - Mutations write events.
 - MCP and HTTP share business logic.
-- SQLite access is isolated.
+- SQLite access is isolated by registry and per-project repository boundaries.
 - The UI exposes agent work clearly rather than hiding it behind generic Kanban behavior.
 - The system remains simple enough to run locally without operational ceremony.

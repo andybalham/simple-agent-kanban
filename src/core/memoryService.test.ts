@@ -8,8 +8,8 @@ const agent: Actor = { type: 'agent', id: 'agent-a' };
 
 // Most tests need a valid project before they can exercise task workflows. This
 // helper keeps that setup boring while still using the public service method.
-function createProject(service: LocalAgentKanbanService) {
-  return service.createProject({ actor: human, name: 'Workspace', description: 'Local work' });
+function createProject(service: LocalAgentKanbanService, repoPath = 'C:/tmp/local-agent-kanban-memory') {
+  return service.createProject({ actor: human, name: 'Workspace', description: 'Local work', repoPath });
 }
 
 describe('MCP contract schemas', () => {
@@ -19,6 +19,8 @@ describe('MCP contract schemas', () => {
     expect(Object.keys(mcpToolSchemas)).toEqual([
       'list_projects',
       'create_project',
+      'register_project',
+      'unregister_project',
       'get_project_context',
       'update_project_context',
       'list_tasks',
@@ -55,7 +57,7 @@ describe('in-memory domain service', () => {
   it('rejects cross-project dependencies and dependency cycles', () => {
     const service = createInMemoryKanbanService();
     const projectA = createProject(service);
-    const projectB = service.createProject({ actor: human, name: 'Other' });
+    const projectB = service.createProject({ actor: human, name: 'Other', repoPath: 'C:/tmp/local-agent-kanban-memory-other' });
     const taskA = service.createTask({ actor: human, projectId: projectA.id, title: 'A' });
     const taskB = service.createTask({ actor: human, projectId: projectB.id, title: 'B' });
     const taskC = service.createTask({ actor: human, projectId: projectA.id, title: 'C' });

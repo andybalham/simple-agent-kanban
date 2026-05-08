@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import { and, asc, eq, gt, isNull } from 'drizzle-orm';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
@@ -13,6 +13,7 @@ import {
   type EventType,
   type Project,
   type ProjectContext,
+  type ProjectLifecycleStatus,
   type Task,
   type TaskArtifact,
   type TaskClaim,
@@ -28,6 +29,7 @@ import type {
   ListClaimsInput,
   ListTasksInput,
   LocalAgentKanbanService,
+  RegisterProjectInput,
   SplitTaskInput,
   UpdateTaskInput,
 } from '../core/services.ts';
@@ -44,6 +46,7 @@ import {
 import * as schema from './schema.ts';
 import {
   projectContexts,
+  projectRegistry,
   projects,
   taskArtifacts,
   taskClaims,
@@ -52,6 +55,7 @@ import {
   taskVerifications,
   tasks,
   type ProjectContextRow,
+  type ProjectRegistryRow,
   type ProjectRow,
   type TaskArtifactRow,
   type TaskClaimRow,
@@ -95,25 +99,25 @@ export type SqliteKanbanOptions = {
  * while this tiny runner keeps local startup dependency-free until a fuller
  * migration CLI workflow is needed.
  */
-export function applySqliteMigrations(sqlite: Database.Database): void {
+export function applyProjectSqliteMigrations(sqlite: Database.Database): void {
   sqlite.pragma('foreign_keys = ON');
   const currentFile = fileURLToPath(import.meta.url);
-  const migrationPath = join(dirname(currentFile), 'migrations', '0000_phase2_sqlite_persistence.sql');
+  const migrationPath = join(dirname(currentFile), 'migrations', 'project', '0000_project_workflow.sql');
+  sqlite.exec(readFileSync(migrationPath, 'utf8'));
+}
+
+export function applyRegistrySqliteMigrations(sqlite: Database.Database): void {
+  sqlite.pragma('foreign_keys = ON');
+  const currentFile = fileURLToPath(import.meta.url);
+  const migrationPath = join(dirname(currentFile), 'migrations', 'registry', '0000_registry.sql');
   sqlite.exec(readFileSync(migrationPath, 'utf8'));
 }
 
 export function createSqliteKanbanService(
-  filename = process.env.LOCAL_AGENT_KANBAN_DB ?? './local-agent-kanban.sqlite',
+  filename = process.env.LOCAL_AGENT_KANBAN_REGISTRY_DB ?? './local-agent-kanban-registry.sqlite',
   options: SqliteKanbanOptions = {},
 ): SqliteKanbanService {
-  // better-sqlite3 is synchronous. That keeps the local service simple and makes
-  // transaction boundaries easy to understand in tests and MCP tool handlers.
-  const sqlite = new Database(filename);
-  sqlite.pragma('foreign_keys = ON');
-  if (options.migrate ?? true) {
-    applySqliteMigrations(sqlite);
-  }
-  const service = new SqliteKanbanService(sqlite);
+  const service = new SqliteKanbanService(filename, options);
   if (options.seed ?? false) {
     seedSqliteKanbanService(service);
   }
@@ -135,6 +139,7 @@ export function seedSqliteKanbanService(service: LocalAgentKanbanService): Proje
     actor,
     name: 'Local Agent Kanban',
     description: 'Seed project for local development.',
+    repoPath: process.cwd(),
   });
   service.updateProjectContext(actor, project.id, {
     overviewMarkdown: 'A local-first Kanban console for trusted coding agents.',
@@ -157,13 +162,277 @@ export function seedSqliteKanbanService(service: LocalAgentKanbanService): Proje
   return project;
 }
 
-/**
- * SQLite implementation of the same LocalAgentKanbanService contract used by
- * the in-memory Phase 1 service. MCP and HTTP adapters should depend on that
- * contract, not this concrete class, so persistence can evolve without changing
- * tool or route behavior.
- */
 export class SqliteKanbanService implements LocalAgentKanbanService {
+  private readonly sqlite: Database.Database;
+  private readonly database: DrizzleDatabase;
+  private readonly resolver: ProjectDatabaseResolver;
+
+  constructor(filename: string, options: SqliteKanbanOptions = {}) {
+    this.sqlite = new Database(filename);
+    this.sqlite.pragma('foreign_keys = ON');
+    if (options.migrate ?? true) {
+      applyRegistrySqliteMigrations(this.sqlite);
+    }
+    this.database = drizzle(this.sqlite, { schema });
+    this.resolver = new ProjectDatabaseResolver(this.database);
+  }
+
+  close(): void {
+    this.resolver.close();
+    this.sqlite.close();
+  }
+
+  listProjects(): Project[] {
+    return this.database.select().from(projectRegistry).orderBy(asc(projectRegistry.registeredAt)).all().map(toRegistryProject);
+  }
+
+  createProject(input: CreateProjectInput): Project {
+    const repoPath = normalizeRepoPath(input.repoPath);
+    const projectDbPath = deriveProjectDbPath(repoPath);
+    mkdirSync(dirname(projectDbPath), { recursive: true });
+    const store = this.resolver.openProjectDb(projectDbPath);
+    invariant(
+      store.listProjects().length === 0,
+      'project_database_already_initialized',
+      `Project database already contains a canonical project row: ${projectDbPath}`,
+    );
+    const project = store.createProject({ ...input, repoPath });
+    this.upsertRegistry(project);
+    return project;
+  }
+
+  registerProject(input: RegisterProjectInput): Project {
+    const repoPath = normalizeRepoPath(input.repoPath);
+    const projectDbPath = deriveProjectDbPath(repoPath);
+    invariant(existsSync(projectDbPath), 'project_database_not_found', `Project database not found: ${projectDbPath}`);
+    const store = this.resolver.openProjectDb(projectDbPath);
+    const projectsInDb = store.listProjects();
+    invariant(
+      projectsInDb.length === 1,
+      'project_database_invalid',
+      'A repository project database must contain exactly one canonical project row.',
+    );
+    const project = { ...projectsInDb[0], repoPath, projectDbPath };
+    this.upsertRegistry(project);
+    return project;
+  }
+
+  unregisterProject(_actor: Actor, projectId: string): { projectId: string; unregistered: true } {
+    const row = this.requireRegistryProject(projectId);
+    this.database.delete(projectRegistry).where(eq(projectRegistry.projectId, row.projectId)).run();
+    this.resolver.forget(row.projectDbPath);
+    return { projectId, unregistered: true };
+  }
+
+  updateProjectLifecycle(_actor: Actor, projectId: string, lifecycleStatus: ProjectLifecycleStatus): Project {
+    const row = this.requireRegistryProject(projectId);
+    const now = new Date();
+    this.database
+      .update(projectRegistry)
+      .set({ lifecycleStatus, updatedAt: now })
+      .where(eq(projectRegistry.projectId, projectId))
+      .run();
+    const store = this.resolver.openProjectDb(row.projectDbPath);
+    store.updateProjectMetadata(projectId, { lifecycleStatus });
+    return { ...toRegistryProject(row), lifecycleStatus, updatedAt: now };
+  }
+
+  getProjectContext(projectId: string): ProjectContext {
+    return this.resolver.resolveByProjectId(projectId).getProjectContext(projectId);
+  }
+
+  updateProjectContext(
+    actor: Actor,
+    projectId: string,
+    context: Partial<Omit<ProjectContext, 'projectId' | 'updatedAt'>>,
+  ): ProjectContext {
+    return this.resolver.resolveByProjectId(projectId).updateProjectContext(actor, projectId, context);
+  }
+
+  listTasks(input: ListTasksInput = {}): TaskWithRelations[] {
+    if (input.projectId) {
+      return this.resolver.resolveByProjectId(input.projectId).listTasks(input);
+    }
+    return this.resolver.allStores().flatMap((store) => store.listTasks(input));
+  }
+
+  createTask(input: CreateTaskInput): TaskWithRelations {
+    return this.resolver.resolveByProjectId(input.projectId).createTask(input);
+  }
+
+  updateTask(actor: Actor, taskId: string, input: UpdateTaskInput): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).updateTask(actor, taskId, input);
+  }
+
+  updateTaskDependencies(actor: Actor, taskId: string, prerequisiteTaskIds: string[]): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).updateTaskDependencies(actor, taskId, prerequisiteTaskIds);
+  }
+
+  splitTask(input: SplitTaskInput): { archivedTask: Task; replacementTasks: TaskWithRelations[] } {
+    return this.resolver.resolveByTaskId(input.taskId).splitTask(input);
+  }
+
+  updateTaskStatus(actor: Actor, taskId: string, status: TaskStatus): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).updateTaskStatus(actor, taskId, status);
+  }
+
+  addTaskNote(actor: Actor, taskId: string, note: string): TaskEvent {
+    return this.resolver.resolveByTaskId(taskId).addTaskNote(actor, taskId, note);
+  }
+
+  requestReview(actor: Actor, taskId: string, summary: string): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).requestReview(actor, taskId, summary);
+  }
+
+  completeTask(actor: Actor, taskId: string, summary: string, evidence?: string[]): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).completeTask(actor, taskId, summary, evidence);
+  }
+
+  listClaims(input: ListClaimsInput = {}): TaskClaim[] {
+    if (input.projectId) {
+      return this.resolver.resolveByProjectId(input.projectId).listClaims(input);
+    }
+    if (input.taskId) {
+      return this.resolver.resolveByTaskId(input.taskId).listClaims(input);
+    }
+    return this.resolver.allStores().flatMap((store) => store.listClaims(input));
+  }
+
+  claimTask(agentId: string, taskId: string, leaseSeconds?: number, now?: Date): TaskClaim {
+    return this.resolver.resolveByTaskId(taskId).claimTask(agentId, taskId, leaseSeconds, now);
+  }
+
+  heartbeatClaim(agentId: string, claimId: string, leaseSeconds?: number, now?: Date): TaskClaim {
+    return this.resolver.resolveByClaimId(claimId).heartbeatClaim(agentId, claimId, leaseSeconds, now);
+  }
+
+  releaseClaim(actor: Actor, claimId: string, now?: Date): TaskClaim {
+    return this.resolver.resolveByClaimId(claimId).releaseClaim(actor, claimId, now);
+  }
+
+  listArtifacts(taskId: string): TaskArtifact[] {
+    return this.resolver.resolveByTaskId(taskId).listArtifacts(taskId);
+  }
+
+  recordArtifact(actor: Actor, taskId: string, kind: ArtifactKind, value: string, metadata?: JsonObject): TaskArtifact {
+    return this.resolver.resolveByTaskId(taskId).recordArtifact(actor, taskId, kind, value, metadata);
+  }
+
+  listVerifications(taskId: string): TaskVerification[] {
+    return this.resolver.resolveByTaskId(taskId).listVerifications(taskId);
+  }
+
+  recordVerification(actor: Actor, taskId: string, summary: string, evidence: string[]): TaskVerification {
+    return this.resolver.resolveByTaskId(taskId).recordVerification(actor, taskId, summary, evidence);
+  }
+
+  listEvents(projectId?: string): TaskEvent[] {
+    if (projectId) {
+      return this.resolver.resolveByProjectId(projectId).listEvents(projectId);
+    }
+    return this.resolver.allStores().flatMap((store) => store.listEvents());
+  }
+
+  private upsertRegistry(project: Project): void {
+    const now = new Date();
+    this.database
+      .insert(projectRegistry)
+      .values({
+        projectId: project.id,
+        name: project.name,
+        description: project.description,
+        repoPath: project.repoPath,
+        projectDbPath: project.projectDbPath,
+        lifecycleStatus: project.lifecycleStatus,
+        registeredAt: now,
+        lastOpenedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: projectRegistry.projectId,
+        set: {
+          name: project.name,
+          description: project.description,
+          repoPath: project.repoPath,
+          projectDbPath: project.projectDbPath,
+          lifecycleStatus: project.lifecycleStatus,
+          lastOpenedAt: now,
+          updatedAt: now,
+        },
+      })
+      .run();
+  }
+
+  private requireRegistryProject(projectId: string): ProjectRegistryRow {
+    const row = this.database.select().from(projectRegistry).where(eq(projectRegistry.projectId, projectId)).get();
+    invariant(row !== undefined, 'project_not_found', `Project not found: ${projectId}`);
+    return row;
+  }
+}
+
+class ProjectDatabaseResolver {
+  private readonly cache = new Map<string, ProjectSqliteKanbanService>();
+
+  constructor(private readonly registryDatabase: DrizzleDatabase) {}
+
+  resolveByProjectId(projectId: string): ProjectSqliteKanbanService {
+    const row = this.registryDatabase.select().from(projectRegistry).where(eq(projectRegistry.projectId, projectId)).get();
+    invariant(row !== undefined, 'project_not_found', `Project not found: ${projectId}`);
+    return this.openProjectDb(row.projectDbPath);
+  }
+
+  resolveByTaskId(taskId: string): ProjectSqliteKanbanService {
+    const store = this.allStores().find((candidate) => candidate.hasTask(taskId));
+    invariant(store !== undefined, 'task_not_found', `Task not found: ${taskId}`);
+    return store;
+  }
+
+  resolveByClaimId(claimId: string): ProjectSqliteKanbanService {
+    const store = this.allStores().find((candidate) => candidate.hasClaim(claimId));
+    invariant(store !== undefined, 'claim_not_found', `Claim not found: ${claimId}`);
+    return store;
+  }
+
+  allStores(): ProjectSqliteKanbanService[] {
+    return this.registryDatabase
+      .select()
+      .from(projectRegistry)
+      .all()
+      .map((row) => this.openProjectDb(row.projectDbPath));
+  }
+
+  openProjectDb(projectDbPath: string): ProjectSqliteKanbanService {
+    const normalizedPath = resolve(projectDbPath);
+    const cached = this.cache.get(normalizedPath);
+    if (cached) {
+      return cached;
+    }
+    const sqlite = new Database(normalizedPath);
+    sqlite.pragma('foreign_keys = ON');
+    applyProjectSqliteMigrations(sqlite);
+    const store = new ProjectSqliteKanbanService(sqlite);
+    this.cache.set(normalizedPath, store);
+    return store;
+  }
+
+  forget(projectDbPath: string): void {
+    const normalizedPath = resolve(projectDbPath);
+    const store = this.cache.get(normalizedPath);
+    if (store) {
+      store.close();
+      this.cache.delete(normalizedPath);
+    }
+  }
+
+  close(): void {
+    for (const store of this.cache.values()) {
+      store.close();
+    }
+    this.cache.clear();
+  }
+}
+
+class ProjectSqliteKanbanService {
   private readonly database: DrizzleDatabase;
 
   constructor(private readonly sqlite: Database.Database) {
@@ -181,11 +450,15 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
   createProject(input: CreateProjectInput): Project {
     return this.transaction(() => {
       const name = nonEmptyTrimmedString.max(120).parse(input.name);
+      const repoPath = normalizeRepoPath(input.repoPath);
       const now = new Date();
       const project: Project = {
         id: nextId('project'),
         name,
         description: input.description?.trim() ?? '',
+        repoPath,
+        projectDbPath: deriveProjectDbPath(repoPath),
+        lifecycleStatus: 'active',
         createdAt: now,
         updatedAt: now,
       };
@@ -199,7 +472,7 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
           projectId: project.id,
           overviewMarkdown: '',
           agentInstructionsMarkdown: '',
-          repoPath: null,
+          repoPath,
           defaultBranch: null,
           packageManager: null,
           installCommand: null,
@@ -213,6 +486,37 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
       this.writeEvent(input.actor, project.id, null, 'project.created', `Project created: ${project.name}`, {});
       return project;
     });
+  }
+
+  updateProjectMetadata(
+    projectId: string,
+    changes: Partial<Pick<Project, 'name' | 'description' | 'repoPath' | 'projectDbPath' | 'lifecycleStatus'>>,
+  ): Project {
+    return this.transaction(() => {
+      const current = this.requireProject(projectId);
+      const updated = { ...current, ...changes, updatedAt: new Date() };
+      this.database
+        .update(projects)
+        .set({
+          name: updated.name,
+          description: updated.description,
+          repoPath: updated.repoPath,
+          projectDbPath: updated.projectDbPath,
+          lifecycleStatus: updated.lifecycleStatus,
+          updatedAt: updated.updatedAt,
+        })
+        .where(eq(projects.id, projectId))
+        .run();
+      return updated;
+    });
+  }
+
+  hasTask(taskId: string): boolean {
+    return this.database.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get() !== undefined;
+  }
+
+  hasClaim(claimId: string): boolean {
+    return this.database.select({ id: taskClaims.id }).from(taskClaims).where(eq(taskClaims.id, claimId)).get() !== undefined;
   }
 
   getProjectContext(projectId: string): ProjectContext {
@@ -955,6 +1259,14 @@ function addSeconds(date: Date, seconds: number): Date {
   return new Date(date.getTime() + seconds * 1000);
 }
 
+function normalizeRepoPath(repoPath: string): string {
+  return resolve(nonEmptyTrimmedString.parse(repoPath));
+}
+
+export function deriveProjectDbPath(repoPath: string): string {
+  return join(normalizeRepoPath(repoPath), '.local-agent-kanban', 'project.sqlite');
+}
+
 function parseStringArray(value: string): string[] {
   // JSON parsing is deliberately defensive. Corrupt optional metadata should not
   // crash a board query; core relational fields still enforce stricter shape.
@@ -972,7 +1284,23 @@ function toProject(row: ProjectRow): Project {
     id: row.id,
     name: row.name,
     description: row.description,
+    repoPath: row.repoPath,
+    projectDbPath: row.projectDbPath,
+    lifecycleStatus: row.lifecycleStatus,
     createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toRegistryProject(row: ProjectRegistryRow): Project {
+  return {
+    id: row.projectId,
+    name: row.name,
+    description: row.description,
+    repoPath: row.repoPath,
+    projectDbPath: row.projectDbPath,
+    lifecycleStatus: row.lifecycleStatus,
+    createdAt: row.registeredAt,
     updatedAt: row.updatedAt,
   };
 }

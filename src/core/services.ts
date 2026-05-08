@@ -3,6 +3,7 @@ import type {
   ArtifactKind,
   Project,
   ProjectContext,
+  ProjectLifecycleStatus,
   Task,
   TaskArtifact,
   TaskClaim,
@@ -24,7 +25,13 @@ import type {
 export type CreateProjectInput = {
   actor: Actor;
   name: string;
+  repoPath: string;
   description?: string;
+};
+
+export type RegisterProjectInput = {
+  actor: Actor;
+  repoPath: string;
 };
 
 /**
@@ -97,6 +104,9 @@ export type SplitTaskInput = {
 export type ProjectWorkflow = {
   listProjects(): Project[];
   createProject(input: CreateProjectInput): Project;
+  registerProject(input: RegisterProjectInput): Project;
+  unregisterProject(actor: Actor, projectId: string): { projectId: string; unregistered: true };
+  updateProjectLifecycle(actor: Actor, projectId: string, lifecycleStatus: ProjectLifecycleStatus): Project;
   getProjectContext(projectId: string): ProjectContext;
   updateProjectContext(actor: Actor, projectId: string, context: Partial<Omit<ProjectContext, 'projectId' | 'updatedAt'>>): ProjectContext;
 };
