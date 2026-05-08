@@ -40,6 +40,7 @@ describe('MCP stdio workflow', () => {
       const project = await callTool(client, 'create_project', {
         actor,
         name: 'MCP Smoke Project',
+        repoPath: join(directory, 'repo'),
         description: 'Created by the MCP smoke test.',
       });
       const projectId = stringField(project, 'projectId');
@@ -108,7 +109,7 @@ async function connectMcp(databasePath: string): Promise<{ client: Client; trans
     args: [resolve('node_modules/tsx/dist/cli.mjs'), resolve('src/mcp/index.ts')],
     cwd: process.cwd(),
     env: {
-      LOCAL_AGENT_KANBAN_DB: databasePath,
+      LOCAL_AGENT_KANBAN_REGISTRY_DB: databasePath,
     },
     stderr: 'pipe',
   });

@@ -67,6 +67,7 @@ export type Actor = {
 };
 
 export type DependencyStatus = 'unblocked' | 'blocked_by_tasks' | 'blocked_external';
+export type ProjectLifecycleStatus = 'active' | 'completed';
 
 /**
  * A project is one local body of work. Rich project instructions live in
@@ -76,6 +77,9 @@ export type Project = {
   id: string;
   name: string;
   description: string;
+  repoPath: string;
+  projectDbPath: string;
+  lifecycleStatus: ProjectLifecycleStatus;
   createdAt: Date;
   updatedAt: Date;
 };

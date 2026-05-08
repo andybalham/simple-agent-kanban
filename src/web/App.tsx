@@ -10,6 +10,9 @@ type Project = {
   id: string;
   name: string;
   description: string;
+  repoPath: string;
+  projectDbPath: string;
+  lifecycleStatus: 'active' | 'completed';
 };
 
 type TaskClaim = {
@@ -116,6 +119,7 @@ export function App() {
   const [editForm, setEditForm] = useState<TaskFormState>(emptyTaskForm);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectRepoPath, setNewProjectRepoPath] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,17 +199,18 @@ export function App() {
 
   async function createProject(event: FormEvent) {
     event.preventDefault();
-    if (!newProjectName.trim()) {
+    if (!newProjectName.trim() || !newProjectRepoPath.trim()) {
       return;
     }
     await mutate(async () => {
       const data = await api<{ project: Project }>('/api/projects', {
         method: 'POST',
-        body: JSON.stringify({ actor: humanActor, name: newProjectName }),
+        body: JSON.stringify({ actor: humanActor, name: newProjectName, repoPath: newProjectRepoPath }),
       });
       setProjects((current) => [...current, data.project]);
       setSelectedProjectId(data.project.id);
       setNewProjectName('');
+      setNewProjectRepoPath('');
       setIsCreatingProject(false);
     });
   }
@@ -320,6 +325,11 @@ export function App() {
       {isCreatingProject && (
         <form className="project-create" onSubmit={createProject}>
           <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Project name" />
+          <input
+            value={newProjectRepoPath}
+            onChange={(event) => setNewProjectRepoPath(event.target.value)}
+            placeholder="Repository path"
+          />
           <button type="submit" disabled={isSaving}>
             Create
           </button>
@@ -334,6 +344,7 @@ export function App() {
             <div>
               <h2>{selectedProject?.name ?? 'No project selected'}</h2>
               <p>{boardSubtitle(isLoading, tasks.length, claims.filter(isStaleClaim).length)}</p>
+              {selectedProject && <p className="project-path">{selectedProject.repoPath}</p>}
             </div>
             <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving}>
               Refresh

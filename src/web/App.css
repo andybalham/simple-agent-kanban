@@ -118,7 +118,11 @@ textarea {
 }
 
 .project-create input {
-  max-width: 340px;
+  max-width: 360px;
+}
+
+.project-create input:nth-of-type(2) {
+  max-width: 520px;
 }
 
 .field {
@@ -171,6 +175,11 @@ textarea {
   margin: 5px 0 0;
   color: #637181;
   line-height: 1.45;
+}
+
+.project-path {
+  max-width: 760px;
+  overflow-wrap: anywhere;
 }
 
 .columns {

@@ -2,6 +2,18 @@ import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core
 
 import { artifactKinds, eventTypes, taskPriorities, taskStatuses } from '../core/domain.ts';
 
+export const projectRegistry = sqliteTable('project_registry', {
+  projectId: text('project_id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  repoPath: text('repo_path').notNull(),
+  projectDbPath: text('project_db_path').notNull(),
+  lifecycleStatus: text('lifecycle_status', { enum: ['active', 'completed'] }).notNull().default('active'),
+  registeredAt: integer('registered_at', { mode: 'timestamp_ms' }).notNull(),
+  lastOpenedAt: integer('last_opened_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 /**
  * Drizzle schema files are the typed bridge between the domain model and SQL.
  *
@@ -29,6 +41,9 @@ export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
+  repoPath: text('repo_path').notNull().default(''),
+  projectDbPath: text('project_db_path').notNull().default(''),
+  lifecycleStatus: text('lifecycle_status', { enum: ['active', 'completed'] }).notNull().default('active'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
@@ -174,6 +189,7 @@ export const taskVerifications = sqliteTable('task_verifications', {
  * back into domain objects without hand-writing parallel TypeScript interfaces.
  */
 export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectRegistryRow = typeof projectRegistry.$inferSelect;
 export type ProjectContextRow = typeof projectContexts.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;
 export type TaskDependencyRow = typeof taskDependencies.$inferSelect;

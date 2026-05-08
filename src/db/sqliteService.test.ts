@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,8 +10,8 @@ import { createSqliteKanbanService, type SqliteKanbanService } from './sqliteSer
 const human: Actor = { type: 'human', id: 'human' };
 const agent: Actor = { type: 'agent', id: 'agent-a' };
 
-function createProject(service: LocalAgentKanbanService) {
-  return service.createProject({ actor: human, name: 'SQLite Workspace', description: 'Durable work' });
+function createProject(service: LocalAgentKanbanService, repoPath = mkdtempSync(join(tmpdir(), 'local-agent-kanban-repo-'))) {
+  return service.createProject({ actor: human, name: 'SQLite Workspace', description: 'Durable work', repoPath });
 }
 
 describe('SQLite-backed domain service', () => {
@@ -25,7 +25,7 @@ describe('SQLite-backed domain service', () => {
 
     try {
       service = createSqliteKanbanService(filename);
-      const project = createProject(service);
+      const project = createProject(service, join(directory, 'repo'));
       service.updateProjectContext(human, project.id, {
         overviewMarkdown: 'Durable overview',
         testCommand: 'npm run test',
@@ -54,6 +54,51 @@ describe('SQLite-backed domain service', () => {
         expect.arrayContaining(['task.claimed', 'artifact.recorded', 'verification.recorded', 'task.completed']),
       );
       expect(claim.expiresAt.toISOString()).toBe('2026-05-08T10:01:00.000Z');
+      reopened.close();
+      reopened = null;
+    } finally {
+      service?.close();
+      reopened?.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('creates repository-local project databases, registers existing projects, and unregisters without deleting workflow data', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'local-agent-kanban-registry-'));
+    const registryPath = join(directory, 'registry.sqlite');
+    const repoPath = join(directory, 'repo');
+    const projectDbPath = join(repoPath, '.local-agent-kanban', 'project.sqlite');
+    let service: SqliteKanbanService | null = null;
+    let reopened: SqliteKanbanService | null = null;
+
+    try {
+      service = createSqliteKanbanService(registryPath);
+      const project = service.createProject({
+        actor: human,
+        name: 'Registry Project',
+        description: 'Split persistence',
+        repoPath,
+      });
+      const task = service.createTask({ actor: human, projectId: project.id, title: 'Repo-local task', status: 'ready' });
+
+      expect(existsSync(projectDbPath)).toBe(true);
+      expect(service.listProjects()[0]).toMatchObject({
+        id: project.id,
+        repoPath,
+        projectDbPath,
+        lifecycleStatus: 'active',
+      });
+
+      service.unregisterProject(human, project.id);
+      expect(service.listProjects()).toHaveLength(0);
+      expect(existsSync(projectDbPath)).toBe(true);
+      service.close();
+      service = null;
+
+      reopened = createSqliteKanbanService(registryPath);
+      const registered = reopened.registerProject({ actor: human, repoPath });
+      expect(registered.id).toBe(project.id);
+      expect(reopened.listTasks({ projectId: project.id }).map((listed) => listed.id)).toContain(task.id);
       reopened.close();
       reopened = null;
     } finally {

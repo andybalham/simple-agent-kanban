@@ -45,6 +45,9 @@ export function createKanbanMcpServer(service: LocalAgentKanbanService): McpServ
       id: project.id,
       name: project.name,
       description: project.description,
+      repoPath: project.repoPath,
+      projectDbPath: project.projectDbPath,
+      lifecycleStatus: project.lifecycleStatus,
       updatedAt: project.updatedAt.toISOString(),
     })),
   }));
@@ -53,6 +56,15 @@ export function createKanbanMcpServer(service: LocalAgentKanbanService): McpServ
     const project = service.createProject(input);
     return { projectId: project.id };
   });
+
+  registerWorkflowTool(server, 'register_project', 'Register an existing repository-local project database.', (input) => {
+    const project = service.registerProject(input);
+    return { projectId: project.id, registered: true };
+  });
+
+  registerWorkflowTool(server, 'unregister_project', 'Remove a project from the local registry without deleting repository data.', (input) =>
+    service.unregisterProject(input.actor, input.projectId),
+  );
 
   registerWorkflowTool(server, 'get_project_context', 'Read the agent-facing project context.', (input) =>
     contextResult(service.getProjectContext(input.projectId)),

@@ -8,7 +8,7 @@ Current phase: **Phase 5 complete; Phase 6 next**
 
 Phase 5 is complete. The next implementation work is to add the project context UI on top of the existing context endpoints.
 
-Architecture note: the requirements now define Phase 2 persistence as a central project registry database plus separate repository-local project databases at `.local-agent-kanban/project.sqlite`. The current implementation evidence below reflects the pre-refactor single SQLite service and should be migrated before treating Phase 2 as aligned with the updated architecture.
+Architecture note: Phase 2 persistence now uses a central project registry database plus separate repository-local project databases at `.local-agent-kanban/project.sqlite`.
 
 ## Phase Tracker
 
@@ -16,7 +16,7 @@ Architecture note: the requirements now define Phase 2 persistence as a central 
 | --- | --- | --- | --- |
 | 0 | Project Foundation | Complete | React/Vite shell, Node HTTP shell, MCP ping entrypoint, shared `src/core` and `src/db` boundaries, TypeScript, lint, format, test, and scaffold check are in place. |
 | 1 | MCP Contract and Domain Model | Complete | Added domain types, MCP tool schemas, validation helpers, service interfaces, and an in-memory workflow service with tests for creation defaults, dependencies, claims, splitting, review, completion, and terminal archive behavior. |
-| 2 | SQLite Persistence | Complete for original single-database implementation; target revised | Added Drizzle schema, SQLite migration SQL, durable service/repository implementation, seed data helper, and SQLite workflow tests with transaction rollback coverage. Updated requirements now call for central registry plus per-project databases. |
+| 2 | SQLite Persistence | Complete | Added central registry and per-project Drizzle schemas/migrations, a resolver-backed SQLite service, register/unregister workflows, seed data helper, legacy migration tool, and SQLite workflow tests. |
 | 3 | MCP Server Implementation | Complete | MCP tools now call the SQLite-backed service and an end-to-end stdio smoke test covers the required agent workflow. |
 | 4 | Local HTTP API | Complete | Added HTTP routes over the same domain services for projects, context, tasks, claims, events, artifacts, and verification. |
 | 5 | React Board UI | Complete | Built the operational Kanban board, project selector, task detail surface, task create/edit flows, status updates, claim release action, and stale claim indicators. |
@@ -68,20 +68,14 @@ Last verified: 2026-05-06.
 
 ## Phase 2 Evidence
 
-Phase 2 deliverables present for the original single-database implementation:
+Phase 2 deliverables present:
 
-- `src/db/schema.ts` defines Drizzle tables for projects, project contexts, tasks, dependencies, claims, events, artifacts, and verification.
-- `src/db/migrations/0000_phase2_sqlite_persistence.sql` creates the V1 SQLite schema and indexes.
-- `src/db/sqliteService.ts` implements the Phase 1 service contract over SQLite/Drizzle, including transaction-scoped event writes.
-- `src/db/sqliteService.test.ts` verifies durability across reopen, dependency-cycle rollback, claimability, splitting, and completion evidence rules against SQLite.
-
-Updated Phase 2 target deliverables not yet reflected in this implementation evidence:
-
-- Central registry schema for active project metadata only.
-- Per-project SQLite schema stored at `.local-agent-kanban/project.sqlite` inside each registered repository.
-- Project database resolver shared by HTTP and MCP.
-- Register/unregister workflows that leave project repository databases untouched.
-- Stable canonical project IDs stored inside project databases.
+- `src/db/schema.ts` defines Drizzle tables for the central `project_registry` plus repository-local workflow tables.
+- `src/db/migrations/registry/0000_registry.sql` creates registry metadata only.
+- `src/db/migrations/project/0000_project_workflow.sql` creates per-project workflow tables and indexes.
+- `src/db/sqliteService.ts` implements the shared service contract over a central registry, project database resolver, and repository-local project stores.
+- `tools/migrate-single-db-to-project-dbs.ts` migrates legacy single-database data into registry plus per-project databases.
+- `src/db/sqliteService.test.ts` verifies durability across reopen, register/unregister behavior, dependency-cycle rollback, claimability, splitting, and completion evidence rules against SQLite.
 
 Phase 2 verification commands:
 
@@ -99,7 +93,7 @@ Last verified: 2026-05-08.
 Phase 3 deliverables present:
 
 - `src/mcp/tools.ts` registers `ping` plus the V1 MCP workflow tools over the shared `LocalAgentKanbanService`.
-- `src/mcp/index.ts` starts a separate stdio MCP process backed by SQLite, with the current `LOCAL_AGENT_KANBAN_DB` single-database configuration and optional seed configuration.
+- `src/mcp/index.ts` starts a separate stdio MCP process backed by SQLite, with `LOCAL_AGENT_KANBAN_REGISTRY_DB` registry configuration and optional seed configuration.
 - `src/core/mcpSchemas.ts` defines structured output schemas for richer task, claim, project, and context results.
 - `src/mcp/mcpServer.test.ts` runs a stdio MCP-only workflow: create project, update context, create task, claim task, record artifact, record verification, and complete task.
 - `README.md` documents local MCP server configuration.
@@ -120,7 +114,7 @@ Last verified: 2026-05-08.
 Phase 4 deliverables present:
 
 - `src/server/httpServer.ts` exposes local API routes for projects, project context, tasks, task dependencies, claims, events, artifacts, verification, review, and completion.
-- `src/server/index.ts` starts the HTTP API with the same current SQLite-backed service and seed configuration used by MCP.
+- `src/server/index.ts` starts the HTTP API with the same registry-backed SQLite service and seed configuration used by MCP.
 - `src/core/services.ts` now includes read methods for claims, artifacts, and verification so HTTP adapters do not reach into persistence directly.
 - `src/core/memoryService.ts` and `src/db/sqliteService.ts` implement those read methods while preserving the shared service boundary.
 - `src/server/httpServer.test.ts` covers a Phase 4 route workflow and verifies completion and claim-release event parity with the shared service rules.

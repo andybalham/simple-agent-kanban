@@ -7,6 +7,7 @@ import {
   idSchema,
   nonEmptyTrimmedString,
   projectContextInputSchema,
+  projectLifecycleStatusSchema,
   replacementTaskSchema,
   taskPrioritySchema,
   taskStatusSchema,
@@ -64,16 +65,35 @@ export const mcpToolSchemas = {
   list_projects: {
     input: z.object({}),
     output: z.object({
-      projects: z.array(z.object({ id: idSchema, name: z.string(), description: z.string(), updatedAt: z.string().datetime() })),
+      projects: z.array(
+        z.object({
+          id: idSchema,
+          name: z.string(),
+          description: z.string(),
+          repoPath: z.string(),
+          projectDbPath: z.string(),
+          lifecycleStatus: projectLifecycleStatusSchema,
+          updatedAt: z.string().datetime(),
+        }),
+      ),
     }),
   },
   create_project: {
     input: z.object({
       actor: actorSchema,
       name: nonEmptyTrimmedString.max(120),
+      repoPath: nonEmptyTrimmedString,
       description: z.string().trim().default(''),
     }),
     output: z.object({ projectId: idSchema }),
+  },
+  register_project: {
+    input: z.object({ actor: actorSchema, repoPath: nonEmptyTrimmedString }),
+    output: z.object({ projectId: idSchema, registered: z.literal(true) }),
+  },
+  unregister_project: {
+    input: z.object({ actor: actorSchema, projectId: idSchema }),
+    output: z.object({ projectId: idSchema, unregistered: z.literal(true) }),
   },
   get_project_context: {
     input: z.object({ projectId: idSchema }),

@@ -28,8 +28,8 @@ Implemented foundation, domain contract, SQLite persistence, durable MCP workflo
 - Local environment example in `.env.example`.
 - Dependency-free Phase 0 scaffold check.
 - Domain types, MCP tool schemas, validation helpers, service interfaces, and in-memory workflow tests for Phase 1.
-- Drizzle SQLite schema and migration SQL for the current workflow tables.
-- SQLite-backed service implementation under `src/db` with seed data support and temporary database workflow tests.
+- Drizzle SQLite schema and migration SQL split between the central project registry and repository-local workflow databases.
+- SQLite-backed registry/resolver service under `src/db` with seed data support and temporary database workflow tests.
 - MCP tool registration over the SQLite-backed service with structured results and domain validation errors.
 - MCP stdio smoke test covering project creation, context update, task creation, claim, artifact, verification, and completion.
 - HTTP route tests covering project/context/task creation, board state, claims, artifacts, verification, completion, claim release events, and completion validation parity.
@@ -94,14 +94,20 @@ Run the MCP server entrypoint:
 npm run dev:mcp
 ```
 
-The target persistence architecture uses a central registry database for active project metadata and project databases at `.local-agent-kanban/project.sqlite` inside registered repositories. The current implementation still uses the pre-refactor single database path. Override that current path for local agent configuration or tests with:
+Runtime persistence uses a central registry database for active project metadata and project databases at `.local-agent-kanban/project.sqlite` inside registered repositories. Override the registry path for local agent configuration or tests with:
 
 ```powershell
-$env:LOCAL_AGENT_KANBAN_DB = 'C:\path\to\local-agent-kanban.sqlite'
+$env:LOCAL_AGENT_KANBAN_REGISTRY_DB = 'C:\path\to\local-agent-kanban-registry.sqlite'
 npm run dev:mcp
 ```
 
 Set `LOCAL_AGENT_KANBAN_SEED=true` when starting the MCP process to create the local seed project if it does not already exist.
+
+To migrate data from the earlier single-database layout, pass the legacy database and the target registry database:
+
+```bash
+npm run migrate:single-db -- ./local-agent-kanban.sqlite ./local-agent-kanban-registry.sqlite
+```
 
 Example MCP server configuration:
 
@@ -113,7 +119,7 @@ Example MCP server configuration:
       "args": ["run", "dev:mcp"],
       "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
       "env": {
-        "LOCAL_AGENT_KANBAN_DB": "C:\\Users\\MONTEITH\\Documents\\New project\\local-agent-kanban.sqlite"
+        "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\Users\\MONTEITH\\Documents\\New project\\local-agent-kanban-registry.sqlite"
       }
     }
   }
@@ -135,6 +141,9 @@ Implemented Phase 4 routes:
 
 - `GET /api/projects`
 - `POST /api/projects`
+- `POST /api/projects/register`
+- `DELETE /api/projects/:projectId`
+- `PATCH /api/projects/:projectId/lifecycle`
 - `GET /api/projects/:projectId/context`
 - `PUT /api/projects/:projectId/context`
 - `GET /api/projects/:projectId/tasks`
