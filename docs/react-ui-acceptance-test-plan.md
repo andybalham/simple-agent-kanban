@@ -34,10 +34,12 @@ $projectA = "C:\tmp\local-agent-kanban-ui-acceptance\project-a"
 $projectB = "C:\tmp\local-agent-kanban-ui-acceptance\project-b"
 ```
 
+On Windows PowerShell, use `npm.cmd` instead of `npm` if `npm.ps1` is blocked by the local execution policy.
+
 Create clean disposable project folders:
 
 ```powershell
-npm run cleanup:dev
+npm.cmd run cleanup:dev
 Remove-Item -LiteralPath "C:\tmp\local-agent-kanban-ui-acceptance" -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $projectA -Force
 New-Item -ItemType Directory -Path $projectB -Force
@@ -48,10 +50,10 @@ Set-Content -Path "$projectB\README.md" -Value "# UI Acceptance Project B`n"
 Run prerequisite checks before starting manual UI acceptance:
 
 ```powershell
-npm install
-npm run lint
-npm run test
-npm run build
+npm.cmd install
+npm.cmd run lint
+npm.cmd run test
+npm.cmd run build
 ```
 
 Expected result:
@@ -63,7 +65,7 @@ Start the local app:
 
 ```powershell
 $env:LOCAL_AGENT_KANBAN_REGISTRY_DB = "C:\tmp\local-agent-kanban-ui-acceptance\registry.sqlite"
-npm run dev
+npm.cmd run dev
 ```
 
 Open:
@@ -354,7 +356,7 @@ Steps:
 1. Stop the local API/dev server.
 2. With the browser still open, click `Refresh`.
 3. Observe the error notice.
-4. Restart `npm run dev` with the same `LOCAL_AGENT_KANBAN_REGISTRY_DB`.
+4. Restart `npm.cmd run dev` with the same `LOCAL_AGENT_KANBAN_REGISTRY_DB`.
 5. Click `Retry`.
 
 Expected result:
@@ -402,7 +404,7 @@ Future acceptance criteria for React UI project removal:
 After testing:
 
 ```powershell
-npm run cleanup:dev -- --repo "C:\tmp\local-agent-kanban-ui-acceptance\project-a" --repo "C:\tmp\local-agent-kanban-ui-acceptance\project-b"
+npm.cmd run cleanup:dev -- --repo "C:\tmp\local-agent-kanban-ui-acceptance\project-a" --repo "C:\tmp\local-agent-kanban-ui-acceptance\project-b"
 Remove-Item -LiteralPath "C:\tmp\local-agent-kanban-ui-acceptance" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
