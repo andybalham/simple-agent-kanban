@@ -61,14 +61,20 @@ textarea {
 }
 
 .app-shell {
+  --project-bg: #eef1f3;
+  --project-border: #768395;
+  --project-surface: #f8fafc;
+  --project-text: #17202a;
+
   display: flex;
   flex-direction: column;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(18, 32, 42, 0.05) 1px, transparent 1px),
-    linear-gradient(rgba(18, 32, 42, 0.04) 1px, transparent 1px), #eef1f3;
+    linear-gradient(90deg, color-mix(in srgb, var(--project-border) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--project-border) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, color-mix(in srgb, var(--project-bg) 82%, #eef1f3), #eef1f3 58%, var(--project-surface));
   background-size: 30px 30px;
 }
 
@@ -117,6 +123,12 @@ textarea {
 .project-tools {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.project-tools select {
+  border-color: var(--project-border);
+  background: var(--project-surface);
+  color: var(--project-text);
 }
 
 .project-create {
@@ -193,6 +205,10 @@ textarea {
   flex: 0 0 auto;
   justify-content: space-between;
   margin-bottom: 14px;
+  border-left: 5px solid var(--project-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--project-bg) 24%, transparent);
+  padding: 10px 12px;
 }
 
 .board-actions {
@@ -239,7 +255,7 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   border: 1px solid #cbd3db;
-  border-left: 5px solid #768395;
+  border-left: 5px solid var(--project-border);
   border-radius: 8px;
   background: #ffffff;
   padding: 12px;
@@ -314,7 +330,7 @@ textarea {
   height: 22px;
   place-items: center;
   border-radius: 999px;
-  background: #17202a;
+  background: var(--project-text);
   color: #ffffff;
   font-size: 12px;
   font-weight: 800;
@@ -542,7 +558,7 @@ textarea {
   height: 24px;
   place-items: center;
   border-radius: 999px;
-  background: #17202a;
+  background: var(--project-text);
   color: #fff;
   font-size: 12px;
 }
@@ -575,8 +591,8 @@ textarea {
 }
 
 .task-card--selected {
-  border-color: #2668a8;
-  box-shadow: 0 0 0 2px rgba(38, 104, 168, 0.18);
+  border-color: var(--project-border);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--project-border) 26%, transparent);
 }
 
 .task-card__main {
@@ -683,7 +699,7 @@ textarea {
 }
 
 .panel-section {
-  border: 1px solid #cbd3db;
+  border: 1px solid color-mix(in srgb, var(--project-border) 42%, #cbd3db);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
   padding: 14px;
@@ -742,8 +758,8 @@ textarea {
 }
 
 .panel-tab--active {
-  border-color: #17202a;
-  background: #17202a;
+  border-color: var(--project-text);
+  background: var(--project-text);
   color: #ffffff;
 }
 

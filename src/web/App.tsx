@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import './App.css';
 
@@ -14,6 +14,16 @@ type Project = {
   projectDbPath: string;
   lifecycleStatus: 'active' | 'completed';
 };
+
+type ProjectAccent = {
+  background: string;
+  border: string;
+  surface: string;
+  text: string;
+};
+
+type ProjectAccentStyle = CSSProperties &
+  Record<'--project-bg' | '--project-border' | '--project-surface' | '--project-text', string>;
 
 type ProjectContext = {
   projectId: string;
@@ -189,6 +199,18 @@ export function App() {
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const projectAccentStyle = useMemo<ProjectAccentStyle | undefined>(() => {
+    if (!selectedProject) {
+      return undefined;
+    }
+    const accent = projectAccent(selectedProject.id);
+    return {
+      '--project-bg': accent.background,
+      '--project-border': accent.border,
+      '--project-surface': accent.surface,
+      '--project-text': accent.text,
+    };
+  }, [selectedProject]);
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   // Claims are leases, not task statuses. The board keeps a separate claim
   // read model so stale work can be highlighted without moving cards between
@@ -490,7 +512,7 @@ export function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" style={projectAccentStyle}>
       <header className="topbar">
         <div className="brand">
           <span className="brand__eyebrow">Local agent console</span>
@@ -1430,6 +1452,31 @@ function groupClaimsByTask(claims: TaskClaim[]): Map<string, TaskClaim[]> {
     grouped.set(claim.taskId, [...(grouped.get(claim.taskId) ?? []), claim]);
   }
   return grouped;
+}
+
+function projectAccent(projectId: string): ProjectAccent {
+  const hash = hashString(projectId);
+  const hue = hash % 360;
+  const saturation = 32 + (hash % 10);
+  const lightness = 92 + ((hash >>> 4) % 3);
+
+  return {
+    background: `hsl(${hue} ${saturation}% ${lightness}%)`,
+    border: `hsl(${hue} ${Math.min(saturation + 5, 46)}% ${Math.max(lightness - 17, 74)}%)`,
+    surface: `hsl(${hue} ${Math.max(saturation - 8, 30)}% 97%)`,
+    text: `hsl(${hue} 28% 28%)`,
+  };
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
 }
 
 function statusLabel(status: TaskStatus): string {
