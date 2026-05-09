@@ -9,7 +9,7 @@ The examples are written for a human who is chatting with an LLM that can call M
 Before using these prompts:
 
 - Register the MCP server as `local-agent-kanban`.
-- Configure the server command to run `npm run dev:mcp`.
+- Configure the server command to run the MCP entrypoint without writing npm lifecycle banners to stdout.
 - Set `LOCAL_AGENT_KANBAN_REGISTRY_DB` to the same registry database used by the local UI/API if you want the browser and MCP server to share state.
 - Create or choose a local example repository path. These prompts use `C:\tmp\local-agent-kanban-prompt-demo\example-project`.
 
@@ -19,8 +19,30 @@ Example MCP server configuration:
 {
   "mcpServers": {
     "local-agent-kanban": {
-      "command": "npm",
-      "args": ["run", "dev:mcp"],
+      "command": "node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "src/mcp/index.ts"],
+      "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
+      "env": {
+        "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\tmp\\local-agent-kanban-prompt-demo\\registry.sqlite"
+      }
+    }
+  }
+}
+```
+
+MCP stdio uses stdout for JSON-RPC messages. Avoid configuring clients with plain `npm run dev:mcp`, because npm writes a script banner to stdout before the server handshake. If your client must launch through npm, use `npm --silent run dev:mcp`.
+
+If the MCP client still cannot connect on Windows, use absolute paths so the client does not depend on its inherited `PATH` or `cwd` behavior:
+
+```json
+{
+  "mcpServers": {
+    "local-agent-kanban": {
+      "command": "C:\\nvm4w-monteith\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\MONTEITH\\Documents\\New project\\node_modules\\tsx\\dist\\cli.mjs",
+        "C:\\Users\\MONTEITH\\Documents\\New project\\src\\mcp\\index.ts"
+      ],
       "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
       "env": {
         "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\tmp\\local-agent-kanban-prompt-demo\\registry.sqlite"

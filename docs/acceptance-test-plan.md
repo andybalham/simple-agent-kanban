@@ -64,8 +64,8 @@ Recommended MCP server configuration:
 {
   "mcpServers": {
     "local-agent-kanban": {
-      "command": "npm",
-      "args": ["run", "dev:mcp"],
+      "command": "node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "src/mcp/index.ts"],
       "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
       "env": {
         "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\tmp\\local-agent-kanban-acceptance\\registry.sqlite"
@@ -79,14 +79,19 @@ If your MCP client does not support `cwd`, use an absolute command and arguments
 
 ```json
 {
-  "command": "C:\\nvm4w-monteith\\nodejs\\npm.cmd",
-  "args": ["run", "dev:mcp"],
+  "command": "C:\\nvm4w-monteith\\nodejs\\node.exe",
+  "args": [
+    "C:\\Users\\MONTEITH\\Documents\\New project\\node_modules\\tsx\\dist\\cli.mjs",
+    "C:\\Users\\MONTEITH\\Documents\\New project\\src\\mcp\\index.ts"
+  ],
   "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
   "env": {
     "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\tmp\\local-agent-kanban-acceptance\\registry.sqlite"
   }
 }
 ```
+
+MCP stdio uses stdout for JSON-RPC messages. Do not configure clients with plain `npm run dev:mcp`, because npm writes lifecycle output to stdout before the MCP handshake. If your client must launch through npm, use `npm --silent run dev:mcp`.
 
 Smoke test the registration from the MCP client:
 

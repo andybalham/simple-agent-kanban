@@ -158,8 +158,30 @@ Example MCP server configuration:
 {
   "mcpServers": {
     "local-agent-kanban": {
-      "command": "npm",
-      "args": ["run", "dev:mcp"],
+      "command": "node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "src/mcp/index.ts"],
+      "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
+      "env": {
+        "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\Users\\MONTEITH\\Documents\\New project\\local-agent-kanban-registry.sqlite"
+      }
+    }
+  }
+}
+```
+
+MCP stdio uses stdout for JSON-RPC messages. Avoid plain `npm run dev:mcp` in MCP client configuration because npm prints lifecycle banners to stdout before the handshake. If you need to launch through npm, configure the client as `npm --silent run dev:mcp`.
+
+For Windows MCP clients that do not inherit your terminal `PATH`, use absolute paths:
+
+```json
+{
+  "mcpServers": {
+    "local-agent-kanban": {
+      "command": "C:\\nvm4w-monteith\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\MONTEITH\\Documents\\New project\\node_modules\\tsx\\dist\\cli.mjs",
+        "C:\\Users\\MONTEITH\\Documents\\New project\\src\\mcp\\index.ts"
+      ],
       "cwd": "C:\\Users\\MONTEITH\\Documents\\New project",
       "env": {
         "LOCAL_AGENT_KANBAN_REGISTRY_DB": "C:\\Users\\MONTEITH\\Documents\\New project\\local-agent-kanban-registry.sqlite"
