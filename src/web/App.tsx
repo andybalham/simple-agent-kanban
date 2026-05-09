@@ -108,6 +108,8 @@ type CompletionFormState = {
   evidence: string;
 };
 
+type SidePanelMode = 'context' | 'create' | 'detail';
+
 type ProjectContextFormState = {
   overviewMarkdown: string;
   agentInstructionsMarkdown: string;
@@ -171,6 +173,8 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [claims, setClaims] = useState<TaskClaim[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>('context');
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [createForm, setCreateForm] = useState<TaskFormState>(emptyTaskForm);
   const [editForm, setEditForm] = useState<TaskFormState>(emptyTaskForm);
@@ -249,6 +253,7 @@ export function App() {
         target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
       if (event.key === 'Escape' && selectedTaskId && !isEditingText) {
         setSelectedTaskId(null);
+        setSidePanelMode('context');
       }
       if ((event.key === 'r' || event.key === 'R') && !isEditingText && selectedProjectId) {
         void refreshBoard(selectedProjectId);
@@ -265,8 +270,14 @@ export function App() {
       setProjectEvents([]);
       setTasks([]);
       setClaims([]);
+      setSelectedTaskId(null);
+      setSidePanelMode('context');
+      setIsSidePanelOpen(true);
       return;
     }
+    setSelectedTaskId(null);
+    setSidePanelMode('context');
+    setIsSidePanelOpen(true);
     void loadProjectContext(selectedProjectId);
     void loadProjectEvents(selectedProjectId);
     void refreshBoard(selectedProjectId);
@@ -277,6 +288,8 @@ export function App() {
       setDetail(null);
       return;
     }
+    setSidePanelMode('detail');
+    setIsSidePanelOpen(true);
     void loadTaskDetail(selectedTaskId);
   }, [selectedTaskId]);
 
@@ -340,11 +353,13 @@ export function App() {
       return;
     }
     await mutate(async () => {
-      await api(`/api/projects/${selectedProjectId}/tasks`, {
+      const data = await api<{ task: Task }>(`/api/projects/${selectedProjectId}/tasks`, {
         method: 'POST',
         body: JSON.stringify({ actor: humanActor, ...formToTaskPayload(createForm) }),
       });
       setCreateForm(emptyTaskForm);
+      setSelectedTaskId(data.task.id);
+      setSidePanelMode('detail');
       await refreshBoard();
       await loadProjectEvents(selectedProjectId);
     });
@@ -457,6 +472,23 @@ export function App() {
     }
   }
 
+  function openCreateTaskPanel() {
+    setSelectedTaskId(null);
+    setSidePanelMode('create');
+    setIsSidePanelOpen(true);
+  }
+
+  function openContextPanel() {
+    setSidePanelMode('context');
+    setIsSidePanelOpen(true);
+  }
+
+  function openTaskPanel(taskId: string) {
+    setSelectedTaskId(taskId);
+    setSidePanelMode('detail');
+    setIsSidePanelOpen(true);
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -514,9 +546,17 @@ export function App() {
               <p>{boardSubtitle(isLoading || isBoardLoading, projects.length, tasks.length, claims.filter(isStaleClaim).length)}</p>
               {selectedProject && <p className="project-path">{selectedProject.repoPath}</p>}
             </div>
-            <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving || isBoardLoading}>
-              {isBoardLoading ? 'Refreshing' : 'Refresh'}
-            </button>
+            <div className="board-actions">
+              <button type="button" onClick={openContextPanel} disabled={!selectedProjectId}>
+                Context
+              </button>
+              <button type="button" onClick={openCreateTaskPanel} disabled={!selectedProjectId || isSaving}>
+                New Task
+              </button>
+              <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving || isBoardLoading}>
+                {isBoardLoading ? 'Refreshing' : 'Refresh'}
+              </button>
+            </div>
           </div>
 
           {isLoading ? (
@@ -534,7 +574,7 @@ export function App() {
                 taskById={taskById}
                 selectedTaskId={selectedTaskId}
                 disabled={isSaving}
-                onSelectTask={setSelectedTaskId}
+                onSelectTask={openTaskPanel}
                 onReleaseClaim={(claimId) => void releaseClaim(claimId)}
               />
 
@@ -554,7 +594,7 @@ export function App() {
                             task={task}
                             staleClaims={staleClaimsByTask.get(task.id) ?? []}
                             isSelected={task.id === selectedTaskId}
-                            onSelect={() => setSelectedTaskId(task.id)}
+                            onSelect={() => openTaskPanel(task.id)}
                             onMove={(status) => void moveTask(task, status)}
                           />
                         ))}
@@ -568,63 +608,96 @@ export function App() {
           )}
         </section>
 
-        <aside className="side-panel" aria-label="Task controls">
-          <section className="panel-section">
-            <h2>Project Context</h2>
-            <ProjectContextEditor
-              form={contextForm}
-              context={projectContext}
-              events={contextEvents}
-              disabled={!selectedProjectId || isSaving}
-              onChange={setContextForm}
-              onSubmit={saveProjectContext}
-            />
-          </section>
-
-          <section className="panel-section">
-            <h2>Create Task</h2>
-            <TaskForm
-              form={createForm}
-              submitLabel="Create Task"
-              includeStatus
-              disabled={!selectedProjectId || isSaving}
-              onChange={setCreateForm}
-              onSubmit={createTask}
-            />
-          </section>
-
-          <section className="panel-section">
-            <h2>Task Detail</h2>
-            {selectedTask ? (
-              <>
-                <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={setEditForm} onSubmit={saveTask} />
-                <TaskRelations task={selectedTask} />
-                <div className="claim-list">
-                  {[selectedTask.activeClaim, ...(staleClaimsByTask.get(selectedTask.id) ?? [])].filter(isTaskClaim).map((claim) => (
-                    <div className={staleClaimIds.has(claim.id) ? 'claim-row claim-row--stale' : 'claim-row'} key={claim.id}>
-                      <div>
-                        <strong>{claim.agentId}</strong>
-                        <span>{staleClaimIds.has(claim.id) ? 'Stale claim' : 'Active claim'}</span>
-                      </div>
-                      <button type="button" onClick={() => void releaseClaim(claim.id)} disabled={isSaving}>
-                        Release
-                      </button>
-                    </div>
-                  ))}
+        <aside className={isSidePanelOpen ? 'side-panel' : 'side-panel side-panel--closed'} aria-label="Task controls">
+          <section className="panel-section panel-section--single">
+            <div className="panel-toolbar">
+              <div className="panel-toolbar__top">
+                <div>
+                  <span className="panel-toolbar__eyebrow">Workspace panel</span>
+                  <h2>{panelTitle(sidePanelMode, selectedTask)}</h2>
                 </div>
-                {selectedTask.status !== 'done' && selectedTask.status !== 'archived' && (
-                  <CompletionForm
-                    form={completionForm}
-                    disabled={isSaving}
-                    onChange={setCompletionForm}
-                    onSubmit={completeTask}
-                  />
+                <button type="button" className="panel-close" onClick={() => setIsSidePanelOpen(false)} aria-label="Close panel">
+                  Close
+                </button>
+              </div>
+              <div className="panel-tabs" role="tablist" aria-label="Panel mode">
+                <button
+                  type="button"
+                  className={sidePanelMode === 'context' ? 'panel-tab panel-tab--active' : 'panel-tab'}
+                  onClick={openContextPanel}
+                >
+                  Context
+                </button>
+                <button
+                  type="button"
+                  className={sidePanelMode === 'create' ? 'panel-tab panel-tab--active' : 'panel-tab'}
+                  onClick={openCreateTaskPanel}
+                  disabled={!selectedProjectId}
+                >
+                  Create
+                </button>
+                {selectedTask && (
+                  <button
+                    type="button"
+                    className={sidePanelMode === 'detail' ? 'panel-tab panel-tab--active' : 'panel-tab'}
+                    onClick={() => openTaskPanel(selectedTask.id)}
+                  >
+                    Detail
+                  </button>
                 )}
-                <TaskEvidence detail={detail} />
-              </>
-            ) : (
-              <p className="panel-empty">Select a task to edit details, inspect evidence, or release a claim.</p>
-            )}
+              </div>
+            </div>
+
+            <div className="panel-content">
+              {sidePanelMode === 'context' && (
+                <ProjectContextEditor
+                  form={contextForm}
+                  context={projectContext}
+                  events={contextEvents}
+                  disabled={!selectedProjectId || isSaving}
+                  onChange={setContextForm}
+                  onSubmit={saveProjectContext}
+                />
+              )}
+
+              {sidePanelMode === 'create' && (
+                <TaskForm
+                  form={createForm}
+                  submitLabel="Create Task"
+                  includeStatus
+                  disabled={!selectedProjectId || isSaving}
+                  onChange={setCreateForm}
+                  onSubmit={createTask}
+                />
+              )}
+
+              {sidePanelMode === 'detail' &&
+                (selectedTask ? (
+                  <>
+                    <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={setEditForm} onSubmit={saveTask} />
+                    <TaskRelations task={selectedTask} />
+                    <div className="claim-list">
+                      {[selectedTask.activeClaim, ...(staleClaimsByTask.get(selectedTask.id) ?? [])].filter(isTaskClaim).map((claim) => (
+                        <div className={staleClaimIds.has(claim.id) ? 'claim-row claim-row--stale' : 'claim-row'} key={claim.id}>
+                          <div>
+                            <strong>{claim.agentId}</strong>
+                            <span>{staleClaimIds.has(claim.id) ? 'Stale claim' : 'Active claim'}</span>
+                          </div>
+                          <button type="button" onClick={() => void releaseClaim(claim.id)} disabled={isSaving}>
+                            Release
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedTask.status !== 'done' && selectedTask.status !== 'archived' && (
+                      <CompletionForm form={completionForm} disabled={isSaving} onChange={setCompletionForm} onSubmit={completeTask} />
+                    )}
+                    <TaskEvidence detail={detail} />
+                  </>
+                ) : (
+                  <p className="panel-empty">Select a task to edit details, inspect evidence, or release a claim.</p>
+                ))}
+            </div>
           </section>
         </aside>
       </section>
@@ -1361,6 +1434,16 @@ function groupClaimsByTask(claims: TaskClaim[]): Map<string, TaskClaim[]> {
 
 function statusLabel(status: TaskStatus): string {
   return columns.find((column) => column.status === status)?.label ?? status;
+}
+
+function panelTitle(mode: SidePanelMode, selectedTask: Task | null): string {
+  if (mode === 'create') {
+    return 'Create Task';
+  }
+  if (mode === 'detail') {
+    return selectedTask?.title ?? 'Task Detail';
+  }
+  return 'Project Context';
 }
 
 function boardSubtitle(isLoading: boolean, projectCount: number, taskCount: number, staleCount: number): string {

@@ -16,6 +16,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow: hidden;
 }
 
 button,
@@ -60,7 +61,11 @@ textarea {
 }
 
 .app-shell {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background:
     linear-gradient(90deg, rgba(18, 32, 42, 0.05) 1px, transparent 1px),
     linear-gradient(rgba(18, 32, 42, 0.04) 1px, transparent 1px), #eef1f3;
@@ -68,6 +73,7 @@ textarea {
 }
 
 .topbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -101,6 +107,7 @@ textarea {
 .project-tools,
 .project-create,
 .board-header,
+.board-actions,
 .task-card__topline {
   display: flex;
   align-items: center;
@@ -113,6 +120,7 @@ textarea {
 }
 
 .project-create {
+  flex: 0 0 auto;
   justify-content: flex-end;
   padding: 12px 22px 0;
 }
@@ -136,6 +144,7 @@ textarea {
 }
 
 .notice {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -160,19 +169,36 @@ textarea {
 }
 
 .workspace {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 480px);
   gap: 18px;
+  min-height: 0;
+  overflow: hidden;
   padding: 20px 22px 24px;
 }
 
+.workspace:has(.side-panel--closed) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .board-surface {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .board-header {
+  flex: 0 0 auto;
   justify-content: space-between;
   margin-bottom: 14px;
+}
+
+.board-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .board-header h2,
@@ -194,6 +220,7 @@ textarea {
 }
 
 .operations-console {
+  flex: 0 0 auto;
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
@@ -256,7 +283,7 @@ textarea {
 
 .ops-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -303,7 +330,7 @@ textarea {
 .activity-feed {
   display: grid;
   gap: 8px;
-  max-height: 260px;
+  max-height: clamp(120px, 18vh, 220px);
   overflow: auto;
 }
 
@@ -398,15 +425,18 @@ textarea {
 }
 
 .activity-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
 }
 
 .columns {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: repeat(6, minmax(170px, 1fr));
   gap: 10px;
+  min-height: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 8px;
 }
 
@@ -488,7 +518,9 @@ textarea {
 }
 
 .column {
-  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid #cbd3db;
   border-radius: 8px;
   background: rgba(248, 250, 252, 0.86);
@@ -496,6 +528,7 @@ textarea {
 }
 
 .column__title {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -515,8 +548,13 @@ textarea {
 }
 
 .column__body {
+  flex: 1 1 auto;
   display: grid;
+  align-content: start;
   gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .empty-column {
@@ -634,10 +672,14 @@ textarea {
 }
 
 .side-panel {
-  display: grid;
-  align-content: start;
-  gap: 14px;
+  display: flex;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
+}
+
+.side-panel--closed {
+  display: none;
 }
 
 .panel-section {
@@ -647,16 +689,87 @@ textarea {
   padding: 14px;
 }
 
+.panel-section--single {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.panel-toolbar {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid #d7dee5;
+  padding: 14px;
+}
+
+.panel-toolbar__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-toolbar__eyebrow {
+  display: block;
+  color: #627080;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.panel-toolbar h2 {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.panel-tab {
+  min-width: 0;
+  border-color: #c6ced6;
+  background: #f8fafc;
+  color: #243242;
+  padding: 8px 9px;
+}
+
+.panel-tab--active {
+  border-color: #17202a;
+  background: #17202a;
+  color: #ffffff;
+}
+
+.panel-close {
+  flex: 0 0 auto;
+  border-color: #c6ced6;
+  background: #ffffff;
+  color: #17202a;
+  padding: 7px 9px;
+}
+
+.panel-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
 .task-form {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .context-form {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .form-grid {
@@ -839,6 +952,16 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .side-panel {
+    position: fixed;
+    top: 84px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 20;
+    width: min(480px, calc(100vw - 32px));
+    filter: drop-shadow(0 24px 46px rgba(20, 31, 43, 0.2));
+  }
+
   .ops-grid {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
@@ -847,6 +970,7 @@ textarea {
 @media (max-width: 720px) {
   .topbar,
   .board-header,
+  .board-actions,
   .project-tools,
   .project-create {
     align-items: stretch;
@@ -855,6 +979,13 @@ textarea {
 
   .workspace {
     padding: 16px;
+  }
+
+  .side-panel {
+    top: 120px;
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
   }
 
   .field--inline,
