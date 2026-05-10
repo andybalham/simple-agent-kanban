@@ -121,6 +121,15 @@ type CompletionFormState = {
   evidence: string;
 };
 
+type BoardSearchFilters = {
+  query: string;
+  status: '' | TaskStatus;
+  priority: '' | TaskPriority;
+  label: string;
+  needsGrooming: '' | 'true' | 'false';
+  claimableOnly: boolean;
+};
+
 type SidePanelMode = 'context' | 'create' | 'detail';
 type RelationPreviewKind = 'prerequisites' | 'dependents';
 
@@ -166,6 +175,15 @@ const emptyCompletionForm: CompletionFormState = {
   evidence: '',
 };
 
+const emptyBoardSearchFilters: BoardSearchFilters = {
+  query: '',
+  status: '',
+  priority: '',
+  label: '',
+  needsGrooming: '',
+  claimableOnly: false,
+};
+
 const emptyContextForm: ProjectContextFormState = {
   overviewMarkdown: '',
   agentInstructionsMarkdown: '',
@@ -196,6 +214,8 @@ export function App() {
   const [createForm, setCreateForm] = useState<TaskFormState>(emptyTaskForm);
   const [editForm, setEditForm] = useState<TaskFormState>(emptyTaskForm);
   const [completionForm, setCompletionForm] = useState<CompletionFormState>(emptyCompletionForm);
+  const [boardSearchFilters, setBoardSearchFilters] = useState<BoardSearchFilters>(emptyBoardSearchFilters);
+  const [draftBoardSearchQuery, setDraftBoardSearchQuery] = useState(emptyBoardSearchFilters.query);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectRepoPath, setNewProjectRepoPath] = useState('');
@@ -221,6 +241,14 @@ export function App() {
   }, [selectedProject]);
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const tasksInImplementationOrder = useMemo(() => orderTasksForImplementation(tasks), [tasks]);
+  const availableLabels = useMemo(() => taskLabelOptions(tasks, boardSearchFilters.label), [tasks, boardSearchFilters.label]);
+  const displayedBoardSearchFilters = useMemo(
+    () => ({ ...boardSearchFilters, query: draftBoardSearchQuery }),
+    [boardSearchFilters, draftBoardSearchQuery],
+  );
+  const hasBoardSearchFilters = useMemo(() => hasActiveBoardSearchFilters(displayedBoardSearchFilters), [displayedBoardSearchFilters]);
+  const boardSearchFilterKey = useMemo(() => serializeBoardSearchFilters(boardSearchFilters), [boardSearchFilters]);
+  const previousBoardSearchFilterKey = useRef(boardSearchFilterKey);
   // Claims are leases, not task statuses. The board keeps a separate claim
   // read model so stale work can be highlighted without moving cards between
   // columns or duplicating the service's workflow rules in React.
@@ -260,7 +288,7 @@ export function App() {
     }
   }
 
-  const refreshBoard = useCallback(async (projectId = selectedProjectId) => {
+  const refreshBoard = useCallback(async (projectId: string, filters: BoardSearchFilters) => {
     if (!projectId) {
       return;
     }
@@ -268,7 +296,7 @@ export function App() {
     setError(null);
     try {
       const [taskData, claimData, contextData, eventData] = await Promise.all([
-        api<{ tasks: Task[] }>(`/api/projects/${projectId}/tasks`),
+        api<{ tasks: Task[] }>(buildTaskListPath(projectId, filters)),
         api<{ claims: TaskClaim[] }>(`/api/projects/${projectId}/claims?state=all`),
         api<{ context: ProjectContext }>(`/api/projects/${projectId}/context`),
         api<{ events: TaskEvent[] }>(`/api/projects/${projectId}/events`),
@@ -276,7 +304,9 @@ export function App() {
       // Archived tasks are still durable history, but Phase 5's board is the
       // active control surface. Split originals therefore stay out of columns
       // while the HTTP/MCP services remain the source of truth.
-      setTasks(taskData.tasks.filter((task) => task.status !== 'archived'));
+      const activeTasks = taskData.tasks.filter((task) => task.status !== 'archived');
+      setTasks(activeTasks);
+      setSelectedTaskId((current) => (current && activeTasks.every((task) => task.id !== current) ? null : current));
       setClaims(claimData.claims.filter((claim) => claim.releasedAt === null));
       setProjectContext(contextData.context);
       setContextForm(contextToForm(contextData.context));
@@ -286,7 +316,7 @@ export function App() {
     } finally {
       setIsBoardLoading(false);
     }
-  }, [selectedProjectId]);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -298,12 +328,12 @@ export function App() {
         setSidePanelMode('context');
       }
       if ((event.key === 'r' || event.key === 'R') && !isEditingText && selectedProjectId) {
-        void refreshBoard(selectedProjectId);
+        void refreshBoard(selectedProjectId, boardSearchFilters);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [refreshBoard, selectedProjectId, selectedTaskId]);
+  }, [boardSearchFilters, refreshBoard, selectedProjectId, selectedTaskId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -317,13 +347,36 @@ export function App() {
       setIsSidePanelOpen(true);
       return;
     }
+    setBoardSearchFilters(emptyBoardSearchFilters);
+    setDraftBoardSearchQuery(emptyBoardSearchFilters.query);
     setSelectedTaskId(null);
     setSidePanelMode('context');
     setIsSidePanelOpen(true);
     void loadProjectContext(selectedProjectId);
     void loadProjectEvents(selectedProjectId);
-    void refreshBoard(selectedProjectId);
-  }, [selectedProjectId, refreshBoard]);
+    void refreshBoard(selectedProjectId, emptyBoardSearchFilters);
+  }, [refreshBoard, selectedProjectId]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setBoardSearchFilters((current) =>
+        current.query === draftBoardSearchQuery ? current : { ...current, query: draftBoardSearchQuery },
+      );
+    }, 450);
+
+    return () => window.clearTimeout(timerId);
+  }, [draftBoardSearchQuery]);
+
+  useEffect(() => {
+    if (previousBoardSearchFilterKey.current === boardSearchFilterKey) {
+      return;
+    }
+    previousBoardSearchFilterKey.current = boardSearchFilterKey;
+    if (!selectedProjectId) {
+      return;
+    }
+    void refreshBoard(selectedProjectId, boardSearchFilters);
+  }, [boardSearchFilterKey, boardSearchFilters, refreshBoard, selectedProjectId]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -409,7 +462,7 @@ export function App() {
       setCreateForm(emptyTaskForm);
       setSelectedTaskId(data.task.id);
       setSidePanelMode('detail');
-      await refreshBoard();
+      await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(selectedProjectId);
     });
   }
@@ -435,7 +488,7 @@ export function App() {
           },
         }),
       });
-      await refreshBoard();
+      await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(selectedProjectId);
       await loadTaskDetail(selectedTaskId);
     });
@@ -450,7 +503,7 @@ export function App() {
         method: 'PATCH',
         body: JSON.stringify({ actor: humanActor, status }),
       });
-      await refreshBoard();
+      await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(task.projectId);
       if (selectedTaskId === task.id) {
         await loadTaskDetail(task.id);
@@ -473,7 +526,7 @@ export function App() {
         }),
       });
       setCompletionForm(emptyCompletionForm);
-      await refreshBoard();
+      await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(selectedProjectId);
       await loadTaskDetail(selectedTaskId);
     });
@@ -501,7 +554,7 @@ export function App() {
         method: 'POST',
         body: JSON.stringify({ actor: humanActor }),
       });
-      await refreshBoard();
+      await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(selectedProjectId);
       if (selectedTaskId) {
         await loadTaskDetail(selectedTaskId);
@@ -605,7 +658,11 @@ export function App() {
               <button type="button" onClick={openCreateTaskPanel} disabled={!selectedProjectId || isSaving}>
                 New Task
               </button>
-              <button type="button" onClick={() => void refreshBoard()} disabled={!selectedProjectId || isSaving || isBoardLoading}>
+              <button
+                type="button"
+                onClick={() => void refreshBoard(selectedProjectId, boardSearchFilters)}
+                disabled={!selectedProjectId || isSaving || isBoardLoading}
+              >
                 {isBoardLoading ? 'Refreshing' : 'Refresh'}
               </button>
             </div>
@@ -628,6 +685,20 @@ export function App() {
                 disabled={isSaving}
                 onSelectTask={openTaskPanel}
                 onReleaseClaim={(claimId) => void releaseClaim(claimId)}
+              />
+
+              <BoardSearchControls
+                filters={boardSearchFilters}
+                queryValue={draftBoardSearchQuery}
+                labels={availableLabels}
+                disabled={!selectedProjectId || isSaving}
+                hasActiveFilters={hasBoardSearchFilters}
+                onChange={setBoardSearchFilters}
+                onQueryChange={setDraftBoardSearchQuery}
+                onClear={() => {
+                  setDraftBoardSearchQuery(emptyBoardSearchFilters.query);
+                  setBoardSearchFilters(emptyBoardSearchFilters);
+                }}
               />
 
               <div className={isBoardLoading ? 'columns columns--loading' : 'columns'} aria-busy={isBoardLoading}>
@@ -781,11 +852,114 @@ export function App() {
 
   async function recoverFromError() {
     if (selectedProjectId) {
-      await Promise.all([refreshBoard(selectedProjectId), loadProjectContext(selectedProjectId), loadProjectEvents(selectedProjectId)]);
+      await Promise.all([
+        refreshBoard(selectedProjectId, boardSearchFilters),
+        loadProjectContext(selectedProjectId),
+        loadProjectEvents(selectedProjectId),
+      ]);
       return;
     }
     await loadProjects();
   }
+}
+
+function BoardSearchControls({
+  filters,
+  queryValue,
+  labels,
+  disabled,
+  hasActiveFilters,
+  onChange,
+  onQueryChange,
+  onClear,
+}: {
+  filters: BoardSearchFilters;
+  queryValue: string;
+  labels: string[];
+  disabled: boolean;
+  hasActiveFilters: boolean;
+  onChange: (filters: BoardSearchFilters) => void;
+  onQueryChange: (query: string) => void;
+  onClear: () => void;
+}) {
+  const updateFilter = <Key extends keyof BoardSearchFilters>(key: Key, value: BoardSearchFilters[Key]) => {
+    onChange({ ...filters, [key]: value });
+  };
+
+  return (
+    <section className="board-search" aria-label="Task search">
+      <label className="board-search__query">
+        <span>Search tasks</span>
+        <input
+          value={queryValue}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Title, description, criteria, label"
+          disabled={disabled}
+        />
+      </label>
+      <label>
+        <span>Status</span>
+        <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value as BoardSearchFilters['status'])} disabled={disabled}>
+          <option value="">All active</option>
+          {columns.map((column) => (
+            <option key={column.status} value={column.status}>
+              {column.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Priority</span>
+        <select
+          value={filters.priority}
+          onChange={(event) => updateFilter('priority', event.target.value as BoardSearchFilters['priority'])}
+          disabled={disabled}
+        >
+          <option value="">Any</option>
+          {priorities.map((priority) => (
+            <option key={priority} value={priority}>
+              {priority}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Label</span>
+        <select value={filters.label} onChange={(event) => updateFilter('label', event.target.value)} disabled={disabled}>
+          <option value="">Any</option>
+          {labels.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Grooming</span>
+        <select
+          value={filters.needsGrooming}
+          onChange={(event) => updateFilter('needsGrooming', event.target.value as BoardSearchFilters['needsGrooming'])}
+          disabled={disabled}
+        >
+          <option value="">Any</option>
+          <option value="true">Needs grooming</option>
+          <option value="false">Groomed</option>
+        </select>
+      </label>
+      <label className="board-search__toggle">
+        <input
+          type="checkbox"
+          checked={filters.claimableOnly}
+          onChange={(event) => updateFilter('claimableOnly', event.target.checked)}
+          disabled={disabled}
+        />
+        <span>Claimable</span>
+      </label>
+      <button type="button" className="board-search__clear" onClick={onClear} disabled={disabled || !hasActiveFilters}>
+        Clear
+      </button>
+    </section>
+  );
 }
 
 function OperationsConsole({
@@ -1844,6 +2018,55 @@ function splitLinesOrCommas(value: string): string[] {
     .split(/[,\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function buildTaskListPath(projectId: string, filters: BoardSearchFilters): string {
+  const params = new URLSearchParams();
+  appendTrimmedParam(params, 'query', filters.query);
+  appendTrimmedParam(params, 'status', filters.status);
+  appendTrimmedParam(params, 'priority', filters.priority);
+  appendTrimmedParam(params, 'label', filters.label);
+  appendTrimmedParam(params, 'needsGrooming', filters.needsGrooming);
+  if (filters.claimableOnly) {
+    params.set('claimableOnly', 'true');
+  }
+  const query = params.toString();
+  return `/api/projects/${projectId}/tasks${query ? `?${query}` : ''}`;
+}
+
+function appendTrimmedParam(params: URLSearchParams, key: string, value: string): void {
+  const trimmed = value.trim();
+  if (trimmed) {
+    params.set(key, trimmed);
+  }
+}
+
+function hasActiveBoardSearchFilters(filters: BoardSearchFilters): boolean {
+  return (
+    filters.query.trim().length > 0 ||
+    filters.status !== '' ||
+    filters.priority !== '' ||
+    filters.label.trim().length > 0 ||
+    filters.needsGrooming !== '' ||
+    filters.claimableOnly
+  );
+}
+
+function serializeBoardSearchFilters(filters: BoardSearchFilters): string {
+  return [
+    filters.query.trim(),
+    filters.status,
+    filters.priority,
+    filters.label.trim(),
+    filters.needsGrooming,
+    String(filters.claimableOnly),
+  ].join('\u001f');
+}
+
+function taskLabelOptions(tasks: Task[], selectedLabel: string): string[] {
+  return [...new Set([...tasks.flatMap((task) => task.labels), selectedLabel.trim()].filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: 'base' }),
+  );
 }
 
 function isStaleClaim(claim: TaskClaim): boolean {

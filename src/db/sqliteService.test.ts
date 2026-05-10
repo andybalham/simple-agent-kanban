@@ -129,6 +129,58 @@ describe('SQLite-backed domain service', () => {
     service.close();
   });
 
+  it('filters durable tasks while keeping project databases isolated', () => {
+    const service = createSqliteKanbanService(':memory:');
+    const project = createProject(service);
+    const otherProject = createProject(service);
+    const prerequisite = service.createTask({
+      actor: human,
+      projectId: project.id,
+      title: 'Prepare search schema notes',
+      status: 'done',
+      acceptanceCriteria: ['SQLite index migration is not required'],
+      labels: ['docs'],
+    });
+    const searchable = service.createTask({
+      actor: agent,
+      projectId: project.id,
+      title: 'Wire SQLite search filters',
+      description: 'Use shared service filters for the local board',
+      status: 'ready',
+      priority: 'urgent',
+      labels: ['db', 'feature'],
+      prerequisiteTaskIds: [prerequisite.id],
+    });
+    service.createTask({
+      actor: human,
+      projectId: otherProject.id,
+      title: 'Wire SQLite search filters in another project',
+      status: 'ready',
+      priority: 'urgent',
+      labels: ['db'],
+    });
+
+    expect(service.listTasks({ projectId: project.id, query: '  sqlite  ' }).map((task) => task.id)).toEqual([
+      prerequisite.id,
+      searchable.id,
+    ]);
+    expect(service.listTasks({ projectId: project.id, query: 'LOCAL BOARD' }).map((task) => task.id)).toEqual([searchable.id]);
+    expect(service.listTasks({ projectId: project.id, query: '' })).toHaveLength(2);
+    expect(
+      service
+        .listTasks({
+          projectId: project.id,
+          status: 'ready',
+          priority: 'urgent',
+          label: 'FEATURE',
+          needsGrooming: true,
+          claimableOnly: true,
+        })
+        .map((task) => task.id),
+    ).toEqual([searchable.id]);
+    service.close();
+  });
+
   it('rolls back dependency rewrites and events when DAG validation fails', () => {
     const service = createSqliteKanbanService(':memory:');
     const project = createProject(service);

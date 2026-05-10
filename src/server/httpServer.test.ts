@@ -154,6 +154,56 @@ describe('HTTP API workflow', () => {
     expect((arrayField(events, 'events') as JsonObject[]).map((event) => event.eventType)).toContain('task.updated');
   });
 
+  it('filters project tasks through HTTP query parameters', async () => {
+    const { baseUrl } = await startApi();
+    const project = await api(baseUrl, 'POST', '/api/projects', {
+      actor: human,
+      name: 'Search Project',
+      repoPath: 'C:/tmp/local-agent-kanban-http-search',
+    });
+    const projectId = stringField(objectField(project, 'project'), 'id');
+    const prerequisite = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: human,
+      title: 'Document search filters',
+      status: 'done',
+      acceptanceCriteria: ['SQLite notes are captured'],
+      labels: ['docs'],
+    });
+    const ready = await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: agent,
+      title: 'Implement local board search',
+      description: 'Find tasks through shared filters',
+      status: 'ready',
+      priority: 'high',
+      labels: ['feature', 'db'],
+      prerequisiteTaskIds: [stringField(objectField(prerequisite, 'task'), 'id')],
+    });
+    await api(baseUrl, 'POST', `/api/projects/${projectId}/tasks`, {
+      actor: human,
+      title: 'Polish review queue',
+      status: 'ready',
+      priority: 'medium',
+      labels: ['frontend'],
+    });
+
+    const textMatches = arrayField(await api(baseUrl, 'GET', `/api/projects/${projectId}/tasks?query=LOCAL%20BOARD`), 'tasks') as JsonObject[];
+    expect(textMatches.map((task) => task.id)).toEqual([stringField(objectField(ready, 'task'), 'id')]);
+
+    const combined = arrayField(
+      await api(
+        baseUrl,
+        'GET',
+        `/api/projects/${projectId}/tasks?status=ready&priority=high&label=DB&needsGrooming=true&claimableOnly=true`,
+      ),
+      'tasks',
+    ) as JsonObject[];
+    expect(combined.map((task) => task.id)).toEqual([stringField(objectField(ready, 'task'), 'id')]);
+
+    const invalid = await rawApi(baseUrl, 'GET', `/api/projects/${projectId}/tasks?priority=critical`);
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.code).toBe('invalid_input');
+  });
+
   it('exposes Phase 7 operations data for activity, review, claims, and evidence views', async () => {
     const { service, baseUrl } = await startApi();
     const project = await api(baseUrl, 'POST', '/api/projects', {

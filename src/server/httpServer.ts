@@ -10,9 +10,11 @@ import {
   mcpToolSchemas,
   projectContextInputSchema,
   projectLifecycleStatusSchema,
+  taskPrioritySchema,
   taskStatusSchema,
   updateTaskBaseSchema,
   type LocalAgentKanbanService,
+  type ListTasksInput,
   type TaskWithRelations,
 } from '../core/index.ts';
 
@@ -108,11 +110,7 @@ async function routeRequest(service: LocalAgentKanbanService, request: IncomingM
   if (request.method === 'GET' && parts.length === 2 && parts[1] === 'tasks') {
     sendJson(response, 200, {
       ok: true,
-      tasks: service.listTasks({
-        projectId: optionalQuery(url, 'projectId'),
-        status: parseOptionalStatus(url),
-        claimableOnly: parseBooleanQuery(url, 'claimableOnly'),
-      }),
+      tasks: service.listTasks(parseTaskListQuery(url, optionalQuery(url, 'projectId'))),
     });
     return;
   }
@@ -172,11 +170,7 @@ async function routeProjectRequest(
   if (request.method === 'GET' && rest.length === 1 && rest[0] === 'tasks') {
     sendJson(response, 200, {
       ok: true,
-      tasks: service.listTasks({
-        projectId,
-        status: parseOptionalStatus(url),
-        claimableOnly: parseBooleanQuery(url, 'claimableOnly'),
-      }),
+      tasks: service.listTasks(parseTaskListQuery(url, projectId)),
     });
     return;
   }
@@ -409,8 +403,33 @@ function parseOptionalStatus(url: URL) {
   return status ? taskStatusSchema.parse(status) : undefined;
 }
 
+function parseOptionalPriority(url: URL) {
+  const priority = url.searchParams.get('priority');
+  return priority ? taskPrioritySchema.parse(priority) : undefined;
+}
+
+function parseTaskListQuery(url: URL, projectId?: string): ListTasksInput {
+  return {
+    projectId,
+    status: parseOptionalStatus(url),
+    query: optionalQuery(url, 'query'),
+    priority: parseOptionalPriority(url),
+    label: optionalQuery(url, 'label'),
+    needsGrooming: parseOptionalBooleanQuery(url, 'needsGrooming'),
+    claimableOnly: parseBooleanQuery(url, 'claimableOnly'),
+  };
+}
+
 function parseBooleanQuery(url: URL, key: string): boolean {
   return url.searchParams.get(key) === 'true';
+}
+
+function parseOptionalBooleanQuery(url: URL, key: string): boolean | undefined {
+  const value = url.searchParams.get(key);
+  if (value === null || value === '') {
+    return undefined;
+  }
+  return z.enum(['true', 'false']).transform((item) => item === 'true').parse(value);
 }
 
 function optionalQuery(url: URL, key: string): string | undefined {

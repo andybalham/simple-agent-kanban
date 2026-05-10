@@ -74,6 +74,50 @@ describe('in-memory domain service', () => {
     );
   });
 
+  it('filters tasks by text, priority, label, grooming state, and claimability', () => {
+    const service = createInMemoryKanbanService();
+    const project = createProject(service);
+    const prerequisite = service.createTask({
+      actor: human,
+      projectId: project.id,
+      title: 'Compile docs foundation',
+      status: 'done',
+      acceptanceCriteria: ['SQLite migration notes are reviewed'],
+      labels: ['docs'],
+    });
+    const ready = service.createTask({
+      actor: agent,
+      projectId: project.id,
+      title: 'Add SQLite task search',
+      description: 'Search the local board through shared services',
+      status: 'ready',
+      priority: 'high',
+      labels: ['db', 'feature'],
+      prerequisiteTaskIds: [prerequisite.id],
+    });
+    service.createTask({
+      actor: human,
+      projectId: project.id,
+      title: 'Polish board filters',
+      status: 'ready',
+      priority: 'medium',
+      labels: ['frontend'],
+    });
+
+    expect(service.listTasks({ projectId: project.id, query: '  sqlite  ' }).map((task) => task.id)).toEqual([
+      prerequisite.id,
+      ready.id,
+    ]);
+    expect(service.listTasks({ projectId: project.id, query: 'LOCAL BOARD' }).map((task) => task.id)).toEqual([ready.id]);
+    expect(service.listTasks({ projectId: project.id, query: 'feature' }).map((task) => task.id)).toEqual([ready.id]);
+    expect(service.listTasks({ projectId: project.id, query: '' })).toHaveLength(3);
+    expect(
+      service
+        .listTasks({ projectId: project.id, status: 'ready', priority: 'high', label: 'DB', needsGrooming: true, claimableOnly: true })
+        .map((task) => task.id),
+    ).toEqual([ready.id]);
+  });
+
   it('rejects cross-project dependencies and dependency cycles', () => {
     const service = createInMemoryKanbanService();
     const projectA = createProject(service);

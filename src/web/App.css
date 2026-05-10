@@ -236,6 +236,68 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.board-search {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) repeat(4, minmax(120px, 0.7fr)) auto auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid #cbd3db;
+  border-left: 5px solid #2d8277;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 10px;
+}
+
+.board-search label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.board-search label > span {
+  color: #627080;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.board-search input,
+.board-search select,
+.board-search button {
+  min-height: 40px;
+}
+
+.board-search__query {
+  min-width: 220px;
+}
+
+.board-search__toggle {
+  grid-template-columns: auto auto;
+  align-items: center;
+  align-self: end;
+  border: 1px solid #c6ced6;
+  border-radius: 6px;
+  background: #ffffff;
+  min-height: 40px;
+  padding: 0 9px;
+}
+
+.board-search__toggle input {
+  min-height: 0;
+  width: auto;
+  margin: 0;
+}
+
+.board-search__clear {
+  align-self: end;
+  border-color: #c6ced6;
+  background: #ffffff;
+  color: #263443;
+}
+
 .operations-console {
   flex: 0 0 auto;
   display: grid;
@@ -1399,6 +1461,10 @@ textarea {
   .ops-grid {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
+
+  .board-search {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1424,6 +1490,7 @@ textarea {
 
   .field--inline,
   .form-grid,
+  .board-search,
   .ops-strip,
   .ops-grid {
     grid-template-columns: 1fr;

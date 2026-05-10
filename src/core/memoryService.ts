@@ -24,6 +24,7 @@ import type {
   SplitTaskInput,
   UpdateTaskInput,
 } from './services.ts';
+import { taskMatchesListFilters } from './services.ts';
 import {
   createTaskBaseSchema,
   invariant,
@@ -164,8 +165,7 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
     // listTasks returns a read model with derived dependency and claim facts.
     // Adapters should not have to recalculate claimability on their own.
     return [...this.tasks.values()]
-      .filter((task) => !input.projectId || task.projectId === input.projectId)
-      .filter((task) => !input.status || task.status === input.status)
+      .filter((task) => taskMatchesListFilters(task, input))
       .map((task) => this.withRelations(task, input.now))
       .filter((task) => !input.claimableOnly || task.isClaimable);
   }

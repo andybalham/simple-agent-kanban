@@ -62,6 +62,10 @@ export type UpdateTaskInput = Partial<
 export type ListTasksInput = {
   projectId?: string;
   status?: TaskStatus;
+  query?: string;
+  priority?: TaskPriority;
+  label?: string;
+  needsGrooming?: boolean;
   claimableOnly?: boolean;
   now?: Date;
 };
@@ -165,3 +169,32 @@ export type EventWorkflow = {
  * prevents MCP and HTTP from accidentally growing separate workflow APIs.
  */
 export type LocalAgentKanbanService = ProjectWorkflow & TaskWorkflow & ClaimWorkflow & ArtifactWorkflow & EventWorkflow;
+
+export function taskMatchesListFilters(task: Task, input: ListTasksInput): boolean {
+  return (
+    (!input.projectId || task.projectId === input.projectId) &&
+    (!input.status || task.status === input.status) &&
+    (!input.priority || task.priority === input.priority) &&
+    (input.needsGrooming === undefined || task.needsGrooming === input.needsGrooming) &&
+    matchesLabelFilter(task, input.label) &&
+    matchesTextQuery(task, input.query)
+  );
+}
+
+function matchesLabelFilter(task: Task, label: string | undefined): boolean {
+  const normalizedLabel = label?.trim().toLowerCase();
+  if (!normalizedLabel) {
+    return true;
+  }
+  return task.labels.some((taskLabel) => taskLabel.toLowerCase() === normalizedLabel);
+}
+
+function matchesTextQuery(task: Task, query: string | undefined): boolean {
+  const normalizedQuery = query?.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return [task.title, task.description, ...task.acceptanceCriteria, ...task.labels].some((value) =>
+    value.toLowerCase().includes(normalizedQuery),
+  );
+}

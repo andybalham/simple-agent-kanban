@@ -33,6 +33,7 @@ import type {
   SplitTaskInput,
   UpdateTaskInput,
 } from '../core/services.ts';
+import { taskMatchesListFilters } from '../core/services.ts';
 import {
   createTaskBaseSchema,
   invariant,
@@ -574,8 +575,7 @@ class ProjectSqliteKanbanService {
       .orderBy(asc(tasks.createdAt))
       .all()
       .map(toTask)
-      .filter((task) => !input.projectId || task.projectId === input.projectId)
-      .filter((task) => !input.status || task.status === input.status)
+      .filter((task) => taskMatchesListFilters(task, input))
       .map((task) => this.withRelations(task, input.now))
       .filter((task) => !input.claimableOnly || task.isClaimable);
   }
