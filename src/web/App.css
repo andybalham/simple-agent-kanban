@@ -16,7 +16,6 @@
 body {
   margin: 0;
   min-width: 320px;
-  overflow: hidden;
 }
 
 button,
@@ -68,9 +67,7 @@ textarea {
 
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  min-height: 0;
-  overflow: hidden;
+  min-height: 100vh;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--project-border) 18%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in srgb, var(--project-border) 14%, transparent) 1px, transparent 1px),
@@ -186,8 +183,7 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 480px);
   gap: 18px;
-  min-height: 0;
-  overflow: hidden;
+  align-items: start;
   padding: 20px 22px 24px;
 }
 
@@ -513,9 +509,7 @@ textarea {
   display: grid;
   grid-template-columns: repeat(6, minmax(170px, 1fr));
   gap: 10px;
-  min-height: 0;
   overflow-x: auto;
-  overflow-y: hidden;
   padding-bottom: 8px;
 }
 
@@ -599,7 +593,6 @@ textarea {
 .column {
   display: flex;
   flex-direction: column;
-  min-height: 0;
   border: 1px solid #cbd3db;
   border-radius: 8px;
   background: rgba(248, 250, 252, 0.86);
@@ -659,8 +652,6 @@ textarea {
   display: grid;
   align-content: start;
   gap: 10px;
-  min-height: 0;
-  overflow: auto;
   padding-right: 2px;
 }
 
