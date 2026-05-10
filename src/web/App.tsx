@@ -122,6 +122,7 @@ type CompletionFormState = {
 };
 
 type SidePanelMode = 'context' | 'create' | 'detail';
+type RelationPreviewKind = 'prerequisites' | 'dependents';
 
 type ProjectContextFormState = {
   overviewMarkdown: string;
@@ -186,6 +187,7 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [claims, setClaims] = useState<TaskClaim[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [relationPreviewKind, setRelationPreviewKind] = useState<RelationPreviewKind | null>(null);
   const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>('context');
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -317,6 +319,7 @@ export function App() {
   useEffect(() => {
     if (!selectedTaskId) {
       setDetail(null);
+      setRelationPreviewKind(null);
       return;
     }
     setSidePanelMode('detail');
@@ -505,16 +508,19 @@ export function App() {
 
   function openCreateTaskPanel() {
     setSelectedTaskId(null);
+    setRelationPreviewKind(null);
     setSidePanelMode('create');
     setIsSidePanelOpen(true);
   }
 
   function openContextPanel() {
+    setRelationPreviewKind(null);
     setSidePanelMode('context');
     setIsSidePanelOpen(true);
   }
 
   function openTaskPanel(taskId: string) {
+    setRelationPreviewKind(null);
     setSelectedTaskId(taskId);
     setSidePanelMode('detail');
     setIsSidePanelOpen(true);
@@ -706,7 +712,7 @@ export function App() {
                 (selectedTask ? (
                   <>
                     <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={setEditForm} onSubmit={saveTask} />
-                    <TaskRelations task={selectedTask} />
+                    <TaskRelations task={selectedTask} onPreview={setRelationPreviewKind} />
                     <div className="claim-list">
                       {[selectedTask.activeClaim, ...(staleClaimsByTask.get(selectedTask.id) ?? [])].filter(isTaskClaim).map((claim) => (
                         <div className={staleClaimIds.has(claim.id) ? 'claim-row claim-row--stale' : 'claim-row'} key={claim.id}>
@@ -732,6 +738,15 @@ export function App() {
           </section>
         </aside>
       </section>
+      {selectedTask && relationPreviewKind && (
+        <TaskRelationModal
+          kind={relationPreviewKind}
+          task={selectedTask}
+          taskById={taskById}
+          onClose={() => setRelationPreviewKind(null)}
+          onSelectTask={openTaskPanel}
+        />
+      )}
     </main>
   );
 
@@ -1261,17 +1276,20 @@ function ContextActivity({ events }: { events: TaskEvent[] }) {
   );
 }
 
-function TaskRelations({ task }: { task: Task }) {
+function TaskRelations({ task, onPreview }: { task: Task; onPreview: (kind: RelationPreviewKind) => void }) {
+  const hasPrerequisites = task.prerequisiteTaskIds.length > 0;
+  const hasDependents = task.dependentTaskIds.length > 0;
+
   return (
     <div className="relation-panel" aria-label="Task dependency context">
-      <div>
+      <button type="button" disabled={!hasPrerequisites} onClick={() => onPreview('prerequisites')}>
         <span>Prerequisites</span>
         <strong>{task.prerequisiteTaskIds.length}</strong>
-      </div>
-      <div>
+      </button>
+      <button type="button" disabled={!hasDependents} onClick={() => onPreview('dependents')}>
         <span>Dependents</span>
         <strong>{task.dependentTaskIds.length}</strong>
-      </div>
+      </button>
       <div>
         <span>Claimable</span>
         <strong>{task.isClaimable ? 'Yes' : 'No'}</strong>
@@ -1282,6 +1300,88 @@ function TaskRelations({ task }: { task: Task }) {
           <strong>{task.blockingPrerequisites.map((prerequisite) => prerequisite.title).join(', ')}</strong>
         </div>
       )}
+    </div>
+  );
+}
+
+function TaskRelationModal({
+  kind,
+  task,
+  taskById,
+  onClose,
+  onSelectTask,
+}: {
+  kind: RelationPreviewKind;
+  task: Task;
+  taskById: Map<string, Task>;
+  onClose: () => void;
+  onSelectTask: (taskId: string) => void;
+}) {
+  const relationIds = kind === 'prerequisites' ? task.prerequisiteTaskIds : task.dependentTaskIds;
+  const title = kind === 'prerequisites' ? 'Prerequisites' : 'Dependents';
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="relation-modal" role="presentation" onMouseDown={onClose}>
+      <section
+        className="relation-modal__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${title} for ${task.title}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="relation-modal__header">
+          <div>
+            <span>Dependency Preview</span>
+            <h3>{title}</h3>
+            <p>{task.title}</p>
+          </div>
+          <button type="button" className="panel-close" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <div className="relation-modal__body">
+          {relationIds.length === 0 ? (
+            <p className="panel-empty">No {kind} recorded for this task.</p>
+          ) : (
+            relationIds.map((taskId) => {
+              const relatedTask = taskById.get(taskId);
+              return (
+                <button
+                  type="button"
+                  className="relation-row"
+                  key={taskId}
+                  onClick={() => {
+                    onClose();
+                    onSelectTask(taskId);
+                  }}
+                  disabled={!relatedTask}
+                >
+                  <div>
+                    <strong>{relatedTask?.title ?? taskId}</strong>
+                    <span>{relatedTask ? statusLabel(relatedTask.status) : 'Not on active board'}</span>
+                  </div>
+                  {relatedTask && (
+                    <div className="relation-row__meta">
+                      <span className={`priority priority--${relatedTask.priority}`}>{relatedTask.priority}</span>
+                      <span className={relatedTask.isClaimable ? 'tag tag--claim' : 'tag'}>{relatedTask.isClaimable ? 'Claimable' : 'Not claimable'}</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </section>
     </div>
   );
 }

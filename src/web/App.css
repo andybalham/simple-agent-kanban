@@ -1067,12 +1067,32 @@ textarea {
   margin-top: 12px;
 }
 
-.relation-panel div {
+.relation-panel div,
+.relation-panel button {
   min-width: 0;
   border: 1px solid #d7dee5;
   border-radius: 8px;
   background: #f8fafc;
+  color: #18212b;
   padding: 9px;
+  text-align: left;
+}
+
+.relation-panel button {
+  cursor: pointer;
+}
+
+.relation-panel button:not(:disabled):hover,
+.relation-panel button:not(:disabled):focus-visible {
+  border-color: var(--project-border);
+  background: var(--project-surface);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--project-border) 24%, transparent);
+}
+
+.relation-panel button:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .relation-panel__wide {
@@ -1094,6 +1114,123 @@ textarea {
 .relation-panel strong {
   margin-top: 4px;
   font-size: 14px;
+}
+
+.relation-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(17, 25, 35, 0.48);
+}
+
+.relation-modal__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 56px));
+  max-height: min(620px, calc(100vh - 56px));
+  overflow: hidden;
+  border: 1px solid #c6ced6;
+  border-radius: 8px;
+  background: #f8fafc;
+  box-shadow: 0 28px 90px rgba(17, 25, 35, 0.32);
+}
+
+.relation-modal__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #d7dee5;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.relation-modal__header span {
+  color: #627080;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.relation-modal__header h3,
+.relation-modal__header p {
+  margin: 0;
+}
+
+.relation-modal__header h3 {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.relation-modal__header p {
+  margin-top: 5px;
+  color: #647386;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.relation-modal__body {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.relation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d7dee5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18212b;
+  padding: 10px;
+  text-align: left;
+}
+
+.relation-row:not(:disabled):hover,
+.relation-row:not(:disabled):focus-visible {
+  border-color: var(--project-border);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--project-border) 20%, transparent);
+}
+
+.relation-row:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.relation-row div {
+  min-width: 0;
+}
+
+.relation-row strong,
+.relation-row span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.relation-row > div:first-child span {
+  margin-top: 3px;
+  color: #647386;
+  font-size: 12px;
+}
+
+.relation-row__meta {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 220px;
 }
 
 .completion-form {
