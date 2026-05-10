@@ -1,6 +1,7 @@
 import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import './App.css';
+import { orderTasksForImplementation } from './taskOrdering';
 
 type Actor = { type: 'human' | 'agent' | 'system'; id: string };
 type TaskStatus = 'backlog' | 'ready' | 'in_progress' | 'blocked' | 'review' | 'done' | 'archived';
@@ -212,6 +213,7 @@ export function App() {
     };
   }, [selectedProject]);
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const tasksInImplementationOrder = useMemo(() => orderTasksForImplementation(tasks), [tasks]);
   // Claims are leases, not task statuses. The board keeps a separate claim
   // read model so stale work can be highlighted without moving cards between
   // columns or duplicating the service's workflow rules in React.
@@ -607,7 +609,7 @@ export function App() {
 
               <div className={isBoardLoading ? 'columns columns--loading' : 'columns'} aria-busy={isBoardLoading}>
                 {columns.map((column) => {
-                  const columnTasks = tasks.filter((task) => task.status === column.status);
+                  const columnTasks = tasksInImplementationOrder.filter((task) => task.status === column.status);
                   return (
                     <section className="column" key={column.status} aria-label={`${column.label} column`}>
                       <h2 className="column__title">
