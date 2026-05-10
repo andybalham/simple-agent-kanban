@@ -149,6 +149,7 @@ const columns: Array<{ status: TaskStatus; label: string }> = [
 const priorities: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
 const movableStatuses: TaskStatus[] = ['backlog', 'ready', 'in_progress', 'blocked', 'review', 'archived'];
 const humanActor: Actor = { type: 'human', id: 'local-ui' };
+const selectedProjectStorageKey = 'local-agent-kanban:selected-project-id';
 
 const emptyTaskForm: TaskFormState = {
   title: '',
@@ -202,6 +203,7 @@ export function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const sortedProjects = useMemo(() => sortProjectsByName(projects), [projects]);
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
   const projectAccentStyle = useMemo<ProjectAccentStyle | undefined>(() => {
@@ -243,7 +245,13 @@ export function App() {
     try {
       const data = await api<{ projects: Project[] }>('/api/projects');
       setProjects(data.projects);
-      setSelectedProjectId((current) => current || data.projects[0]?.id || '');
+      const sorted = sortProjectsByName(data.projects);
+      const storedProjectId = readSelectedProjectId();
+      setSelectedProjectId((current) =>
+        sorted.some((project) => project.id === current)
+          ? current
+          : sorted.find((project) => project.id === storedProjectId)?.id || sorted[0]?.id || '',
+      );
     } catch (apiError) {
       setError(errorMessage(apiError));
     } finally {
@@ -315,6 +323,12 @@ export function App() {
     void loadProjectEvents(selectedProjectId);
     void refreshBoard(selectedProjectId);
   }, [selectedProjectId, refreshBoard]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      writeSelectedProjectId(selectedProjectId);
+    }
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectedTaskId) {
@@ -539,7 +553,7 @@ export function App() {
             <span>Project</span>
             <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} disabled={projects.length === 0}>
               {projects.length === 0 && <option value="">No registered projects</option>}
-              {projects.map((project) => (
+              {sortedProjects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
                 </option>
@@ -1618,6 +1632,29 @@ function contextToForm(context: ProjectContext): ProjectContextFormState {
     lintCommand: context.lintCommand ?? '',
     codingConventionsMarkdown: context.codingConventionsMarkdown,
   };
+}
+
+function sortProjectsByName(projects: Project[]): Project[] {
+  return [...projects].sort(
+    (left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) || left.id.localeCompare(right.id),
+  );
+}
+
+function readSelectedProjectId(): string | null {
+  try {
+    return window.localStorage.getItem(selectedProjectStorageKey);
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedProjectId(projectId: string): void {
+  try {
+    window.localStorage.setItem(selectedProjectStorageKey, projectId);
+  } catch {
+    // Remembering the selection is a local convenience. The board should keep
+    // working normally in browsers that block localStorage.
+  }
 }
 
 function formToProjectContextPayload(form: ProjectContextFormState): Omit<ProjectContext, 'projectId' | 'updatedAt'> {
