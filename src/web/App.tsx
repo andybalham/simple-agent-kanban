@@ -1,4 +1,6 @@
 import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import './App.css';
 import { orderTasksForImplementation } from './taskOrdering';
@@ -1054,24 +1056,22 @@ function ProjectContextEditor({
 }) {
   return (
     <form className="context-form" onSubmit={onSubmit}>
-      <label className="field">
-        <span>Overview</span>
-        <textarea
-          value={form.overviewMarkdown}
-          onChange={(event) => onChange({ ...form, overviewMarkdown: event.target.value })}
-          placeholder="Markdown summary agents should read first"
-          rows={4}
-        />
-      </label>
-      <label className="field">
-        <span>Agent Instructions</span>
-        <textarea
-          value={form.agentInstructionsMarkdown}
-          onChange={(event) => onChange({ ...form, agentInstructionsMarkdown: event.target.value })}
-          placeholder="Repository workflow, expectations, and limits"
-          rows={4}
-        />
-      </label>
+      <MarkdownField
+        label="Overview"
+        value={form.overviewMarkdown}
+        placeholder="Markdown summary agents should read first"
+        rows={4}
+        disabled={disabled}
+        onChange={(overviewMarkdown) => onChange({ ...form, overviewMarkdown })}
+      />
+      <MarkdownField
+        label="Agent Instructions"
+        value={form.agentInstructionsMarkdown}
+        placeholder="Repository workflow, expectations, and limits"
+        rows={4}
+        disabled={disabled}
+        onChange={(agentInstructionsMarkdown) => onChange({ ...form, agentInstructionsMarkdown })}
+      />
       <div className="form-grid">
         <label className="field">
           <span>Repo Path</span>
@@ -1106,21 +1106,127 @@ function ProjectContextEditor({
         <span>Lint Command</span>
         <input value={form.lintCommand} onChange={(event) => onChange({ ...form, lintCommand: event.target.value })} />
       </label>
-      <label className="field">
-        <span>Coding Conventions</span>
-        <textarea
-          value={form.codingConventionsMarkdown}
-          onChange={(event) => onChange({ ...form, codingConventionsMarkdown: event.target.value })}
-          placeholder="Markdown conventions agents should preserve"
-          rows={4}
-        />
-      </label>
+      <MarkdownField
+        label="Coding Conventions"
+        value={form.codingConventionsMarkdown}
+        placeholder="Markdown conventions agents should preserve"
+        rows={4}
+        disabled={disabled}
+        onChange={(codingConventionsMarkdown) => onChange({ ...form, codingConventionsMarkdown })}
+      />
       <button type="submit" disabled={disabled}>
         Save Context
       </button>
       <AgentContextPreview context={context} />
       <ContextActivity events={events} />
     </form>
+  );
+}
+
+function MarkdownField({
+  label,
+  value,
+  placeholder,
+  rows,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  rows?: number;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [mode, setMode] = useState<'write' | 'preview'>('write');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  return (
+    <div className="markdown-field">
+      <div className="markdown-field__header">
+        <span>{label}</span>
+        <div className="markdown-field__actions" aria-label={`${label} markdown view`}>
+          <button
+            type="button"
+            className={mode === 'write' ? 'segmented-button segmented-button--active' : 'segmented-button'}
+            onClick={() => setMode('write')}
+          >
+            Write
+          </button>
+          <button
+            type="button"
+            className={mode === 'preview' ? 'segmented-button segmented-button--active' : 'segmented-button'}
+            onClick={() => setMode('preview')}
+          >
+            Preview
+          </button>
+          <button type="button" className="markdown-field__popout" onClick={() => setIsModalOpen(true)}>
+            Pop Out
+          </button>
+        </div>
+      </div>
+
+      {mode === 'write' ? (
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          disabled={disabled}
+        />
+      ) : (
+        <MarkdownPreview value={value} emptyMessage="Nothing to preview." />
+      )}
+
+      {isModalOpen && <MarkdownPreviewModal title={label} value={value} onClose={() => setIsModalOpen(false)} />}
+    </div>
+  );
+}
+
+function MarkdownPreviewModal({ title, value, onClose }: { title: string; value: string; onClose: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="markdown-modal" role="presentation" onMouseDown={onClose}>
+      <section
+        className="markdown-modal__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${title} markdown preview`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="markdown-modal__header">
+          <div>
+            <span>Markdown Preview</span>
+            <h3>{title}</h3>
+          </div>
+          <button type="button" className="panel-close" onClick={onClose}>
+            Close
+          </button>
+        </header>
+        <MarkdownPreview value={value} emptyMessage="Nothing to preview." expanded />
+      </section>
+    </div>
+  );
+}
+
+function MarkdownPreview({ value, emptyMessage, expanded = false }: { value: string; emptyMessage: string; expanded?: boolean }) {
+  if (!value.trim()) {
+    return <div className={expanded ? 'markdown-preview markdown-preview--expanded' : 'markdown-preview'}>{emptyMessage}</div>;
+  }
+
+  return (
+    <div className={expanded ? 'markdown-preview markdown-preview--expanded' : 'markdown-preview'}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+    </div>
   );
 }
 
@@ -1201,10 +1307,13 @@ function TaskForm({
         <span>Title</span>
         <input value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} />
       </label>
-      <label className="field">
-        <span>Description</span>
-        <textarea value={form.description} onChange={(event) => onChange({ ...form, description: event.target.value })} rows={3} />
-      </label>
+      <MarkdownField
+        label="Description"
+        value={form.description}
+        rows={3}
+        disabled={disabled}
+        onChange={(description) => onChange({ ...form, description })}
+      />
       <div className="form-grid">
         {includeStatus && (
           <label className="field">
