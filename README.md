@@ -40,6 +40,20 @@ Implemented foundation, domain contract, SQLite persistence, durable MCP workflo
 
 See `STATUS.md` for the phase tracker and `docs/implementation-plan.md` for the full build order.
 
+## Example Screenshots
+
+The React UI gives the human operator a browser control surface over the same project data and workflow rules exposed through MCP.
+
+![Kanban board overview with project metrics, task search, activity, and status columns](docs/screenshots/board-overview.png)
+
+The project context panel stores repo metadata, workflow commands, and agent-facing instructions alongside a generated preview.
+
+![Project context editor with Markdown fields, repository metadata, and agent preview](docs/screenshots/project-context.png)
+
+Task details expose editable fields, dependencies, claimability, artifacts, verification evidence, and activity for the selected task.
+
+![Task detail panel with editable title, description, priority, labels, acceptance criteria, and dependency facts](docs/screenshots/task-detail.png)
+
 ## Project Layout
 
 ```text
