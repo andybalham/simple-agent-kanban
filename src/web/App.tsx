@@ -252,15 +252,20 @@ export function App() {
     setIsBoardLoading(true);
     setError(null);
     try {
-      const [taskData, claimData] = await Promise.all([
+      const [taskData, claimData, contextData, eventData] = await Promise.all([
         api<{ tasks: Task[] }>(`/api/projects/${projectId}/tasks`),
         api<{ claims: TaskClaim[] }>(`/api/projects/${projectId}/claims?state=all`),
+        api<{ context: ProjectContext }>(`/api/projects/${projectId}/context`),
+        api<{ events: TaskEvent[] }>(`/api/projects/${projectId}/events`),
       ]);
       // Archived tasks are still durable history, but Phase 5's board is the
       // active control surface. Split originals therefore stay out of columns
       // while the HTTP/MCP services remain the source of truth.
       setTasks(taskData.tasks.filter((task) => task.status !== 'archived'));
       setClaims(claimData.claims.filter((claim) => claim.releasedAt === null));
+      setProjectContext(contextData.context);
+      setContextForm(contextToForm(contextData.context));
+      setProjectEvents(eventData.events);
     } catch (apiError) {
       setError(errorMessage(apiError));
     } finally {
