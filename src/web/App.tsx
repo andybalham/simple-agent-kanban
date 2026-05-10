@@ -1,4 +1,4 @@
-import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -189,6 +189,7 @@ export function App() {
   const [claims, setClaims] = useState<TaskClaim[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [relationPreviewKind, setRelationPreviewKind] = useState<RelationPreviewKind | null>(null);
+  const [columnPreviewStatus, setColumnPreviewStatus] = useState<TaskStatus | null>(null);
   const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>('context');
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -634,10 +635,15 @@ export function App() {
                   const columnTasks = tasksInImplementationOrder.filter((task) => task.status === column.status);
                   return (
                     <section className="column" key={column.status} aria-label={`${column.label} column`}>
-                      <h2 className="column__title">
-                        {column.label}
-                        <span className="column__count">{columnTasks.length}</span>
-                      </h2>
+                      <div className="column__header">
+                        <h2 className="column__title">
+                          {column.label}
+                          <span className="column__count">{columnTasks.length}</span>
+                        </h2>
+                        <button type="button" className="column__preview" onClick={() => setColumnPreviewStatus(column.status)}>
+                          Preview
+                        </button>
+                      </div>
                       <div className="column__body">
                         {columnTasks.map((task) => (
                           <TaskCard
@@ -759,6 +765,15 @@ export function App() {
           taskById={taskById}
           onClose={() => setRelationPreviewKind(null)}
           onSelectTask={openTaskPanel}
+        />
+      )}
+      {columnPreviewStatus && (
+        <ColumnMarkdownModal
+          status={columnPreviewStatus}
+          projectName={selectedProject?.name ?? 'Local Agent Kanban'}
+          tasks={tasksInImplementationOrder.filter((task) => task.status === columnPreviewStatus)}
+          taskById={taskById}
+          onClose={() => setColumnPreviewStatus(null)}
         />
       )}
     </main>
@@ -1247,6 +1262,94 @@ function MarkdownPreviewModal({ title, value, onClose }: { title: string; value:
   );
 }
 
+function ColumnMarkdownModal({
+  status,
+  projectName,
+  tasks,
+  taskById,
+  onClose,
+}: {
+  status: TaskStatus;
+  projectName: string;
+  tasks: Task[];
+  taskById: Map<string, Task>;
+  onClose: () => void;
+}) {
+  const renderedRef = useRef<HTMLDivElement>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const title = `${statusLabel(status)} Tasks`;
+  const markdown = useMemo(() => buildColumnMarkdown(projectName, status, tasks, taskById), [projectName, status, taskById, tasks]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  async function copyText(text: string, message: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMessage(message);
+    } catch {
+      setCopyMessage('Clipboard unavailable');
+    }
+  }
+
+  function exportMarkdown() {
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${slugify(projectName)}-${status}-tasks.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="markdown-modal" role="presentation" onMouseDown={onClose}>
+      <section
+        className="markdown-modal__panel column-markdown-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${title} markdown preview`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="markdown-modal__header column-markdown-modal__header">
+          <div>
+            <span>Column Markdown</span>
+            <h3>{title}</h3>
+            <p>
+              {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} in current board order
+            </p>
+          </div>
+          <div className="column-markdown-modal__actions">
+            {copyMessage && <span className="copy-status">{copyMessage}</span>}
+            <button type="button" className="panel-close" onClick={() => void copyText(renderedRef.current?.innerText ?? '', 'Rendered copied')}>
+              Copy Rendered
+            </button>
+            <button type="button" className="panel-close" onClick={() => void copyText(markdown, 'Source copied')}>
+              Copy Source
+            </button>
+            <button type="button" className="panel-close" onClick={exportMarkdown}>
+              Export .md
+            </button>
+            <button type="button" className="panel-close" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </header>
+        <div ref={renderedRef} className="column-markdown-modal__preview">
+          <MarkdownPreview value={markdown} emptyMessage="No tasks in this column." expanded />
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MarkdownPreview({ value, emptyMessage, expanded = false }: { value: string; emptyMessage: string; expanded?: boolean }) {
   if (!value.trim()) {
     return <div className={expanded ? 'markdown-preview markdown-preview--expanded' : 'markdown-preview'}>{emptyMessage}</div>;
@@ -1655,6 +1758,58 @@ function writeSelectedProjectId(projectId: string): void {
     // Remembering the selection is a local convenience. The board should keep
     // working normally in browsers that block localStorage.
   }
+}
+
+function buildColumnMarkdown(projectName: string, status: TaskStatus, tasks: Task[], taskById: Map<string, Task>): string {
+  const lines = [`# ${projectName} - ${statusLabel(status)}`, '', `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'} in board order.`, ''];
+
+  if (tasks.length === 0) {
+    lines.push('_No tasks in this column._');
+    return lines.join('\n');
+  }
+
+  tasks.forEach((task, index) => {
+    lines.push(`## ${index + 1}. ${task.title}`, '');
+    lines.push('| Status | Priority | Labels | Claimable | Prerequisites | Dependents |');
+    lines.push('| --- | --- | --- | --- | ---: | ---: |');
+    lines.push(
+      `| ${statusLabel(task.status)} | ${task.priority} | ${task.labels.length > 0 ? task.labels.join(', ') : 'none'} | ${
+        task.isClaimable ? 'yes' : 'no'
+      } | ${task.prerequisiteTaskIds.length} | ${task.dependentTaskIds.length} |`,
+    );
+    if (task.activeClaim) {
+      lines.push('', `Active claim: ${task.activeClaim.agentId}, expires ${formatDateTime(task.activeClaim.expiresAt)}`);
+    }
+    if (task.blockingPrerequisites.length > 0) {
+      lines.push(`- Blocking prerequisites: ${task.blockingPrerequisites.map((prerequisite) => prerequisite.title).join(', ')}`);
+    }
+    if (task.description.trim()) {
+      lines.push('', task.description.trim());
+    }
+    if (task.acceptanceCriteria.length > 0) {
+      lines.push('', 'Acceptance criteria:', ...task.acceptanceCriteria.map((criterion) => `- ${criterion}`));
+    }
+    if (task.prerequisiteTaskIds.length > 0) {
+      lines.push(
+        '',
+        'Prerequisites:',
+        ...task.prerequisiteTaskIds.map((prerequisiteId) => `- ${taskById.get(prerequisiteId)?.title ?? prerequisiteId}`),
+      );
+    }
+    lines.push('');
+  });
+
+  return lines.join('\n').trimEnd();
+}
+
+function slugify(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || 'column';
 }
 
 function formToProjectContextPayload(form: ProjectContextFormState): Omit<ProjectContext, 'projectId' | 'updatedAt'> {
