@@ -264,6 +264,10 @@ export class SqliteKanbanService implements LocalAgentKanbanService {
     return this.resolver.resolveByTaskId(taskId).updateTask(actor, taskId, input);
   }
 
+  markTaskGroomed(actor: Actor, taskId: string): TaskWithRelations {
+    return this.resolver.resolveByTaskId(taskId).markTaskGroomed(actor, taskId);
+  }
+
   updateTaskDependencies(actor: Actor, taskId: string, prerequisiteTaskIds: string[]): TaskWithRelations {
     return this.resolver.resolveByTaskId(taskId).updateTaskDependencies(actor, taskId, prerequisiteTaskIds);
   }
@@ -623,6 +627,16 @@ class ProjectSqliteKanbanService {
       });
       this.writeEvent(actor, updated.projectId, taskId, 'task.updated', `Task updated: ${updated.title}`, {
         fields: Object.keys(parsed),
+      });
+      return this.withRelations(updated);
+    });
+  }
+
+  markTaskGroomed(actor: Actor, taskId: string): TaskWithRelations {
+    return this.transaction(() => {
+      const updated = this.touchTask(taskId, { needsGrooming: false });
+      this.writeEvent(actor, updated.projectId, taskId, 'task.updated', `Task groomed: ${updated.title}`, {
+        fields: ['needsGrooming'],
       });
       return this.withRelations(updated);
     });

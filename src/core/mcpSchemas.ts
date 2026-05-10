@@ -122,6 +122,10 @@ export const mcpToolSchemas = {
     }),
     output: z.object({ taskId: idSchema, prerequisiteTaskIds: z.array(idSchema) }),
   },
+  mark_task_groomed: {
+    input: z.object({ actor: actorSchema, taskId: idSchema }),
+    output: taskResponseSchema,
+  },
   split_task: {
     input: z.object({
       actor: actorSchema,

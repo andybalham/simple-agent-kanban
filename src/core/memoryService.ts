@@ -219,6 +219,14 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
     return this.withRelations(updated);
   }
 
+  markTaskGroomed(actor: Actor, taskId: string): TaskWithRelations {
+    const updated = this.touchTask(taskId, { needsGrooming: false });
+    this.writeEvent(actor, updated.projectId, taskId, 'task.updated', `Task groomed: ${updated.title}`, {
+      fields: ['needsGrooming'],
+    });
+    return this.withRelations(updated);
+  }
+
   updateTaskDependencies(actor: Actor, taskId: string, prerequisiteTaskIds: string[]): TaskWithRelations {
     this.requireTask(taskId);
     this.replaceDependencies(actor, taskId, prerequisiteTaskIds);

@@ -26,6 +26,7 @@ describe('MCP contract schemas', () => {
       'list_tasks',
       'create_task',
       'update_task_dependencies',
+      'mark_task_groomed',
       'split_task',
       'claim_task',
       'heartbeat_claim',
@@ -52,6 +53,25 @@ describe('in-memory domain service', () => {
     expect(humanTask.needsGrooming).toBe(false);
     // Agent-created tasks are allowed, but marked for later human grooming.
     expect(agentTask.needsGrooming).toBe(true);
+  });
+
+  it('marks a task as groomed through a focused workflow event', () => {
+    const service = createInMemoryKanbanService();
+    const project = createProject(service);
+    const task = service.createTask({ actor: agent, projectId: project.id, title: 'Needs review' });
+
+    const groomed = service.markTaskGroomed(human, task.id);
+
+    expect(groomed.needsGrooming).toBe(false);
+    expect(service.listEvents(project.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: task.id,
+          eventType: 'task.updated',
+          metadata: { fields: ['needsGrooming'] },
+        }),
+      ]),
+    );
   });
 
   it('rejects cross-project dependencies and dependency cycles', () => {

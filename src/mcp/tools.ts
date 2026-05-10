@@ -88,6 +88,10 @@ export function createKanbanMcpServer(service: LocalAgentKanbanService): McpServ
     return { taskId: task.id, prerequisiteTaskIds: task.prerequisiteTaskIds };
   });
 
+  registerWorkflowTool(server, 'mark_task_groomed', 'Clear the needs-grooming flag after a task has been reviewed.', (input) =>
+    taskResult(service.markTaskGroomed(input.actor, input.taskId)),
+  );
+
   registerWorkflowTool(server, 'split_task', 'Split a broad task into flat replacement tasks.', (input) => {
     const split = service.splitTask(input);
     return {

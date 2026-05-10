@@ -296,6 +296,7 @@ V1 tools:
 - `list_tasks`
 - `create_task`
 - `update_task_dependencies`
+- `mark_task_groomed`
 - `split_task`
 - `claim_task`
 - `heartbeat_claim`

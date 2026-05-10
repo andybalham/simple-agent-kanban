@@ -30,6 +30,7 @@ describe('MCP stdio workflow', () => {
           'create_project',
           'update_project_context',
           'create_task',
+          'mark_task_groomed',
           'claim_task',
           'record_artifact',
           'record_verification',
@@ -64,6 +65,12 @@ describe('MCP stdio workflow', () => {
       const taskId = stringField(task, 'taskId');
       expect(task.needsGrooming).toBe(true);
       expect(task.isClaimable).toBe(true);
+
+      const groomed = await callTool(client, 'mark_task_groomed', {
+        actor,
+        taskId,
+      });
+      expect(groomed.needsGrooming).toBe(false);
 
       const claim = await callTool(client, 'claim_task', {
         agentId: actor.id,

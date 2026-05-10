@@ -108,6 +108,27 @@ describe('SQLite-backed domain service', () => {
     }
   });
 
+  it('persists focused task grooming updates and their activity event', () => {
+    const service = createSqliteKanbanService(':memory:');
+    const project = createProject(service);
+    const task = service.createTask({ actor: agent, projectId: project.id, title: 'Agent-created task' });
+
+    const groomed = service.markTaskGroomed(human, task.id);
+
+    expect(groomed.needsGrooming).toBe(false);
+    expect(service.listTasks({ projectId: project.id }).find((listed) => listed.id === task.id)?.needsGrooming).toBe(false);
+    expect(service.listEvents(project.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: task.id,
+          eventType: 'task.updated',
+          metadata: { fields: ['needsGrooming'] },
+        }),
+      ]),
+    );
+    service.close();
+  });
+
   it('rolls back dependency rewrites and events when DAG validation fails', () => {
     const service = createSqliteKanbanService(':memory:');
     const project = createProject(service);

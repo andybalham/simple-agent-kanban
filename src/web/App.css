@@ -583,6 +583,9 @@ textarea {
 }
 
 .task-card {
+  display: flex;
+  min-height: 146px;
+  flex-direction: column;
   border: 1px solid #c6ced6;
   border-radius: 8px;
   background: #ffffff;
@@ -597,6 +600,7 @@ textarea {
 
 .task-card__main {
   display: grid;
+  flex: 1 1 auto;
   width: 100%;
   gap: 8px;
   border: 0;

@@ -120,6 +120,7 @@ export type TaskWorkflow = {
   listTasks(input?: ListTasksInput): TaskWithRelations[];
   createTask(input: CreateTaskInput): TaskWithRelations;
   updateTask(actor: Actor, taskId: string, input: UpdateTaskInput): TaskWithRelations;
+  markTaskGroomed(actor: Actor, taskId: string): TaskWithRelations;
   updateTaskDependencies(actor: Actor, taskId: string, prerequisiteTaskIds: string[]): TaskWithRelations;
   splitTask(input: SplitTaskInput): { archivedTask: Task; replacementTasks: TaskWithRelations[] };
   updateTaskStatus(actor: Actor, taskId: string, status: TaskStatus): TaskWithRelations;
