@@ -1036,7 +1036,7 @@ function BoardSearchControls({
   };
 
   return (
-    <section className="board-search" aria-label="Task search">
+    <section className="board-search" aria-label="Task filters">
       <label className="board-search__query">
         <span>Search tasks</span>
         <input
@@ -1094,15 +1094,6 @@ function BoardSearchControls({
           <option value="true">Needs grooming</option>
           <option value="false">Groomed</option>
         </select>
-      </label>
-      <label className="board-search__toggle">
-        <input
-          type="checkbox"
-          checked={filters.claimableOnly}
-          onChange={(event) => updateFilter('claimableOnly', event.target.checked)}
-          disabled={disabled}
-        />
-        <span>Claimable</span>
       </label>
       <button type="button" className="board-search__clear" onClick={onClear} disabled={disabled || !hasActiveFilters}>
         Clear
