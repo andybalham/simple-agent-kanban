@@ -132,6 +132,15 @@ Set `LOCAL_AGENT_KANBAN_SEED=true` when starting the MCP process to create the l
 
 Create a new project from the UI or MCP `create_project` tool by providing a local repository path. The app creates `.local-agent-kanban/project.sqlite` inside that repository, stores the canonical project ID there, and registers the project in the central registry database.
 
+## Using The Board UI
+
+The board header provides manual and automatic refresh controls:
+
+- Click `Refresh` to reload the selected project's tasks, claims, context, and activity immediately.
+- Click `Play` to refresh the board every 5 seconds while watching agent work progress.
+- Click `Pause` to stop automatic refresh. The button also pauses automatically when you interact with task or project controls, such as selecting a project, opening or editing a task, changing filters, moving a task, opening previews, editing project context, or releasing a claim.
+- Automatic refresh only resumes when you click `Play` again.
+
 Register an existing project repository when its `.local-agent-kanban/project.sqlite` already exists:
 
 ```powershell

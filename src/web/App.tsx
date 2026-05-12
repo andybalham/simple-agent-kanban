@@ -159,6 +159,7 @@ const priorities: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
 const movableStatuses: TaskStatus[] = ['backlog', 'ready', 'in_progress', 'blocked', 'review', 'archived'];
 const humanActor: Actor = { type: 'human', id: 'local-ui' };
 const selectedProjectStorageKey = 'local-agent-kanban:selected-project-id';
+const boardAutoRefreshIntervalMs = 5_000;
 
 const emptyTaskForm: TaskFormState = {
   title: '',
@@ -222,6 +223,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sortedProjects = useMemo(() => sortProjectsByName(projects), [projects]);
@@ -263,6 +265,9 @@ export function App() {
     () => projectEvents.filter((event) => event.eventType === 'project.context_updated').slice(-3).reverse(),
     [projectEvents],
   );
+  const pauseAutoRefresh = useCallback(() => {
+    setIsAutoRefreshEnabled(false);
+  }, []);
 
   useEffect(() => {
     void loadProjects();
@@ -324,6 +329,7 @@ export function App() {
       const isEditingText =
         target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
       if (event.key === 'Escape' && selectedTaskId && !isEditingText) {
+        pauseAutoRefresh();
         setSelectedTaskId(null);
         setSidePanelMode('context');
       }
@@ -333,7 +339,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [boardSearchFilters, refreshBoard, selectedProjectId, selectedTaskId]);
+  }, [boardSearchFilters, pauseAutoRefresh, refreshBoard, selectedProjectId, selectedTaskId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -377,6 +383,18 @@ export function App() {
     }
     void refreshBoard(selectedProjectId, boardSearchFilters);
   }, [boardSearchFilterKey, boardSearchFilters, refreshBoard, selectedProjectId]);
+
+  useEffect(() => {
+    if (!isAutoRefreshEnabled || !selectedProjectId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshBoard(selectedProjectId, boardSearchFilters);
+    }, boardAutoRefreshIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [boardSearchFilters, isAutoRefreshEnabled, refreshBoard, selectedProjectId]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -433,6 +451,7 @@ export function App() {
 
   async function createProject(event: FormEvent) {
     event.preventDefault();
+    pauseAutoRefresh();
     if (!newProjectName.trim() || !newProjectRepoPath.trim()) {
       return;
     }
@@ -451,6 +470,7 @@ export function App() {
 
   async function createTask(event: FormEvent) {
     event.preventDefault();
+    pauseAutoRefresh();
     if (!selectedProjectId || !createForm.title.trim()) {
       return;
     }
@@ -469,6 +489,7 @@ export function App() {
 
   async function saveTask(event: FormEvent) {
     event.preventDefault();
+    pauseAutoRefresh();
     if (!selectedTaskId || !editForm.title.trim()) {
       return;
     }
@@ -495,6 +516,7 @@ export function App() {
   }
 
   async function moveTask(task: Task, status: TaskStatus) {
+    pauseAutoRefresh();
     if (status === task.status) {
       return;
     }
@@ -513,6 +535,7 @@ export function App() {
 
   async function completeTask(event: FormEvent) {
     event.preventDefault();
+    pauseAutoRefresh();
     if (!selectedTaskId || !completionForm.summary.trim()) {
       return;
     }
@@ -534,6 +557,7 @@ export function App() {
 
   async function saveProjectContext(event: FormEvent) {
     event.preventDefault();
+    pauseAutoRefresh();
     if (!selectedProjectId) {
       return;
     }
@@ -549,6 +573,7 @@ export function App() {
   }
 
   async function releaseClaim(claimId: string) {
+    pauseAutoRefresh();
     await mutate(async () => {
       await api(`/api/claims/${claimId}/release`, {
         method: 'POST',
@@ -575,6 +600,7 @@ export function App() {
   }
 
   function openCreateTaskPanel() {
+    pauseAutoRefresh();
     setSelectedTaskId(null);
     setRelationPreviewKind(null);
     setSidePanelMode('create');
@@ -582,16 +608,111 @@ export function App() {
   }
 
   function openContextPanel() {
+    pauseAutoRefresh();
     setRelationPreviewKind(null);
     setSidePanelMode('context');
     setIsSidePanelOpen(true);
   }
 
   function openTaskPanel(taskId: string) {
+    pauseAutoRefresh();
     setRelationPreviewKind(null);
     setSelectedTaskId(taskId);
     setSidePanelMode('detail');
     setIsSidePanelOpen(true);
+  }
+
+  function selectProject(projectId: string) {
+    pauseAutoRefresh();
+    setSelectedProjectId(projectId);
+  }
+
+  function updateBoardSearchFilters(filters: BoardSearchFilters) {
+    pauseAutoRefresh();
+    setBoardSearchFilters(filters);
+  }
+
+  function updateDraftBoardSearchQuery(query: string) {
+    pauseAutoRefresh();
+    setDraftBoardSearchQuery(query);
+  }
+
+  function clearBoardSearchFilters() {
+    pauseAutoRefresh();
+    setDraftBoardSearchQuery(emptyBoardSearchFilters.query);
+    setBoardSearchFilters(emptyBoardSearchFilters);
+  }
+
+  function toggleProjectCreate() {
+    pauseAutoRefresh();
+    setIsCreatingProject((value) => !value);
+  }
+
+  function showProjectCreate() {
+    pauseAutoRefresh();
+    setIsCreatingProject(true);
+  }
+
+  function updateNewProjectName(name: string) {
+    pauseAutoRefresh();
+    setNewProjectName(name);
+  }
+
+  function updateNewProjectRepoPath(repoPath: string) {
+    pauseAutoRefresh();
+    setNewProjectRepoPath(repoPath);
+  }
+
+  function updateContextForm(form: ProjectContextFormState) {
+    pauseAutoRefresh();
+    setContextForm(form);
+  }
+
+  function updateCreateForm(form: TaskFormState) {
+    pauseAutoRefresh();
+    setCreateForm(form);
+  }
+
+  function updateEditForm(form: TaskFormState) {
+    pauseAutoRefresh();
+    setEditForm(form);
+  }
+
+  function updateCompletionForm(form: CompletionFormState) {
+    pauseAutoRefresh();
+    setCompletionForm(form);
+  }
+
+  function previewRelation(kind: RelationPreviewKind) {
+    pauseAutoRefresh();
+    setRelationPreviewKind(kind);
+  }
+
+  function closeRelationPreview() {
+    pauseAutoRefresh();
+    setRelationPreviewKind(null);
+  }
+
+  function previewColumn(status: TaskStatus) {
+    pauseAutoRefresh();
+    setColumnPreviewStatus(status);
+  }
+
+  function closeColumnPreview() {
+    pauseAutoRefresh();
+    setColumnPreviewStatus(null);
+  }
+
+  function closeSidePanel() {
+    pauseAutoRefresh();
+    setIsSidePanelOpen(false);
+  }
+
+  function toggleAutoRefresh() {
+    if (!isAutoRefreshEnabled && selectedProjectId && !isBoardLoading) {
+      void refreshBoard(selectedProjectId, boardSearchFilters);
+    }
+    setIsAutoRefreshEnabled((enabled) => !enabled);
   }
 
   return (
@@ -605,7 +726,7 @@ export function App() {
         <div className="project-tools">
           <label className="field field--inline">
             <span>Project</span>
-            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} disabled={projects.length === 0}>
+            <select value={selectedProjectId} onChange={(event) => selectProject(event.target.value)} disabled={projects.length === 0}>
               {projects.length === 0 && <option value="">No registered projects</option>}
               {sortedProjects.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -614,7 +735,7 @@ export function App() {
               ))}
             </select>
           </label>
-          <button type="button" onClick={() => setIsCreatingProject((value) => !value)}>
+          <button type="button" onClick={toggleProjectCreate}>
             New Project
           </button>
         </div>
@@ -622,10 +743,10 @@ export function App() {
 
       {isCreatingProject && (
         <form className="project-create" onSubmit={createProject}>
-          <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Project name" />
+          <input value={newProjectName} onChange={(event) => updateNewProjectName(event.target.value)} placeholder="Project name" />
           <input
             value={newProjectRepoPath}
-            onChange={(event) => setNewProjectRepoPath(event.target.value)}
+            onChange={(event) => updateNewProjectRepoPath(event.target.value)}
             placeholder="Repository path"
           />
           <button type="submit" disabled={isSaving}>
@@ -665,13 +786,24 @@ export function App() {
               >
                 {isBoardLoading ? 'Refreshing' : 'Refresh'}
               </button>
+              <button
+                type="button"
+                className={isAutoRefreshEnabled ? 'auto-refresh-button auto-refresh-button--active' : 'auto-refresh-button'}
+                onClick={toggleAutoRefresh}
+                disabled={!selectedProjectId || isSaving}
+                aria-pressed={isAutoRefreshEnabled}
+                title={isAutoRefreshEnabled ? 'Pause automatic refresh' : 'Refresh every 5 seconds'}
+              >
+                <span>{isAutoRefreshEnabled ? 'Pause' : 'Play'}</span>
+                <span className="auto-refresh-button__status">{isAutoRefreshEnabled ? '5s' : 'Paused'}</span>
+              </button>
             </div>
           </div>
 
           {isLoading ? (
             <LoadingBoard />
           ) : projects.length === 0 ? (
-            <EmptyProjectState onCreate={() => setIsCreatingProject(true)} />
+            <EmptyProjectState onCreate={showProjectCreate} />
           ) : (
             <>
               <OperationsConsole
@@ -693,12 +825,9 @@ export function App() {
                 labels={availableLabels}
                 disabled={!selectedProjectId || isSaving}
                 hasActiveFilters={hasBoardSearchFilters}
-                onChange={setBoardSearchFilters}
-                onQueryChange={setDraftBoardSearchQuery}
-                onClear={() => {
-                  setDraftBoardSearchQuery(emptyBoardSearchFilters.query);
-                  setBoardSearchFilters(emptyBoardSearchFilters);
-                }}
+                onChange={updateBoardSearchFilters}
+                onQueryChange={updateDraftBoardSearchQuery}
+                onClear={clearBoardSearchFilters}
               />
 
               <div className={isBoardLoading ? 'columns columns--loading' : 'columns'} aria-busy={isBoardLoading}>
@@ -711,7 +840,7 @@ export function App() {
                           {column.label}
                           <span className="column__count">{columnTasks.length}</span>
                         </h2>
-                        <button type="button" className="column__preview" onClick={() => setColumnPreviewStatus(column.status)}>
+                        <button type="button" className="column__preview" onClick={() => previewColumn(column.status)}>
                           Preview
                         </button>
                       </div>
@@ -744,7 +873,7 @@ export function App() {
                   <span className="panel-toolbar__eyebrow">Workspace panel</span>
                   <h2>{panelTitle(sidePanelMode, selectedTask)}</h2>
                 </div>
-                <button type="button" className="panel-close" onClick={() => setIsSidePanelOpen(false)} aria-label="Close panel">
+                <button type="button" className="panel-close" onClick={closeSidePanel} aria-label="Close panel">
                   Close
                 </button>
               </div>
@@ -783,7 +912,7 @@ export function App() {
                   context={projectContext}
                   events={contextEvents}
                   disabled={!selectedProjectId || isSaving}
-                  onChange={setContextForm}
+                  onChange={updateContextForm}
                   onSubmit={saveProjectContext}
                 />
               )}
@@ -794,7 +923,7 @@ export function App() {
                   submitLabel="Create Task"
                   includeStatus
                   disabled={!selectedProjectId || isSaving}
-                  onChange={setCreateForm}
+                  onChange={updateCreateForm}
                   onSubmit={createTask}
                 />
               )}
@@ -802,8 +931,8 @@ export function App() {
               {sidePanelMode === 'detail' &&
                 (selectedTask ? (
                   <>
-                    <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={setEditForm} onSubmit={saveTask} />
-                    <TaskRelations task={selectedTask} onPreview={setRelationPreviewKind} />
+                    <TaskForm form={editForm} submitLabel="Save Task" disabled={isSaving} onChange={updateEditForm} onSubmit={saveTask} />
+                    <TaskRelations task={selectedTask} onPreview={previewRelation} />
                     <div className="claim-list">
                       {[selectedTask.activeClaim, ...(staleClaimsByTask.get(selectedTask.id) ?? [])].filter(isTaskClaim).map((claim) => (
                         <div className={staleClaimIds.has(claim.id) ? 'claim-row claim-row--stale' : 'claim-row'} key={claim.id}>
@@ -818,7 +947,7 @@ export function App() {
                       ))}
                     </div>
                     {selectedTask.status !== 'done' && selectedTask.status !== 'archived' && (
-                      <CompletionForm form={completionForm} disabled={isSaving} onChange={setCompletionForm} onSubmit={completeTask} />
+                      <CompletionForm form={completionForm} disabled={isSaving} onChange={updateCompletionForm} onSubmit={completeTask} />
                     )}
                     <TaskEvidence detail={detail} />
                   </>
@@ -834,7 +963,7 @@ export function App() {
           kind={relationPreviewKind}
           task={selectedTask}
           taskById={taskById}
-          onClose={() => setRelationPreviewKind(null)}
+          onClose={closeRelationPreview}
           onSelectTask={openTaskPanel}
         />
       )}
@@ -844,7 +973,7 @@ export function App() {
           projectName={selectedProject?.name ?? 'Local Agent Kanban'}
           tasks={tasksInImplementationOrder.filter((task) => task.status === columnPreviewStatus)}
           taskById={taskById}
-          onClose={() => setColumnPreviewStatus(null)}
+          onClose={closeColumnPreview}
         />
       )}
     </main>

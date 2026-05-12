@@ -337,14 +337,22 @@ Steps:
 
 1. Click `Refresh`.
 2. Confirm board data remains stable.
-3. Select any task.
-4. Click outside text inputs.
-5. Press `Escape`.
-6. Select Project A again if needed, click outside text inputs, and press `r`.
+3. Click `Play`.
+4. Confirm the control changes to `Pause` and shows the 5-second refresh state.
+5. Select any task.
+6. Confirm the control returns to `Play` and `Paused`.
+7. Click `Play` again.
+8. Click `Pause`.
+9. Click outside text inputs.
+10. Press `Escape`.
+11. Select Project A again if needed, click outside text inputs, and press `r`.
 
 Expected result:
 
 - Refresh reloads board data without duplicating tasks.
+- `Play` starts automatic board refresh every 5 seconds.
+- `Pause` stops automatic board refresh.
+- Task or project interactions pause automatic refresh, and it resumes only when `Play` is clicked again.
 - `Escape` clears the selected task and returns Task Detail to its empty selection state.
 - `r` refreshes the board when focus is not inside an input, textarea, or select.
 - Keyboard shortcuts do not trigger while editing text fields.
