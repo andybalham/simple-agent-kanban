@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 type ToolOutput = Record<string, unknown>;
 
 const actor = { type: 'agent', id: 'agent-smoke' } as const;
+const reviewTool = { type: 'system', id: 'review-tool' } as const;
 
 let activeClient: Client | null = null;
 
@@ -34,6 +35,7 @@ describe('MCP stdio workflow', () => {
           'claim_task',
           'record_artifact',
           'record_verification',
+          'request_review',
           'complete_task',
         ]),
       );
@@ -95,8 +97,20 @@ describe('MCP stdio workflow', () => {
       });
       expect(stringField(verification, 'verificationId')).toMatch(/^verification_/);
 
-      const completed = await callTool(client, 'complete_task', {
+      await callTool(client, 'update_task_status', {
         actor,
+        taskId,
+        status: 'in_progress',
+      });
+      const review = await callTool(client, 'request_review', {
+        actor,
+        taskId,
+        summary: 'Ready for review-tool approval',
+      });
+      expect(review.status).toBe('review');
+
+      const completed = await callTool(client, 'complete_task', {
+        actor: reviewTool,
         taskId,
         summary: 'Finished through MCP',
       });

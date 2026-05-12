@@ -5,6 +5,7 @@ import type { Actor, LocalAgentKanbanService } from './index.ts';
 
 const human: Actor = { type: 'human', id: 'human' };
 const agent: Actor = { type: 'agent', id: 'agent-a' };
+const reviewTool: Actor = { type: 'system', id: 'review-tool' };
 
 // Most tests need a valid project before they can exercise task workflows. This
 // helper keeps that setup boring while still using the public service method.
@@ -155,8 +156,10 @@ describe('in-memory domain service', () => {
     expect(blocked.dependencyStatus).toBe('blocked_by_tasks');
     expect(() => service.claimTask(agent.id, blocked.id)).toThrow(DomainValidationError);
 
-    // Completing the prerequisite with evidence unblocks the dependent task.
-    service.completeTask(agent, prerequisite.id, 'Done', ['npm test passed']);
+    service.updateTaskStatus(agent, prerequisite.id, 'in_progress');
+    service.recordVerification(agent, prerequisite.id, 'Verified', ['npm test passed']);
+    service.requestReview(agent, prerequisite.id, 'Ready for prerequisite approval');
+    service.completeTask(human, prerequisite.id, 'Approved');
     const claim = service.claimTask(agent.id, blocked.id, 60, new Date('2026-05-06T10:00:00.000Z'));
 
     expect(claim.taskId).toBe(blocked.id);
@@ -232,7 +235,8 @@ describe('in-memory domain service', () => {
     service.recordArtifact(agent, task.id, 'file', 'src/core/memoryService.ts');
     service.recordVerification(agent, task.id, 'Verified', ['npm test passed']);
     const review = service.requestReview(agent, task.id, 'Ready for review');
-    const done = service.completeTask(agent, task.id, 'Finished');
+    expect(() => service.completeTask(agent, task.id, 'Finished')).toThrow(DomainValidationError);
+    const done = service.completeTask(reviewTool, task.id, 'Finished');
 
     // The event stream proves the service is writing meaningful activity for
     // later UI surfaces such as review queues and timelines.
@@ -270,5 +274,30 @@ describe('in-memory domain service', () => {
     // Generic status movement cannot be used to bypass completeTask's evidence
     // requirement.
     expect(() => service.updateTaskStatus(human, task.id, 'done')).toThrow(DomainValidationError);
+  });
+
+  it('rejects skipped status transitions', () => {
+    const service = createInMemoryKanbanService();
+    const project = createProject(service);
+    const task = service.createTask({ actor: human, projectId: project.id, title: 'Do not skip', status: 'ready' });
+
+    expect(() => service.updateTaskStatus(agent, task.id, 'review')).toThrow(DomainValidationError);
+
+    const inProgress = service.updateTaskStatus(agent, task.id, 'in_progress');
+    const review = service.requestReview(agent, task.id, 'Ready for review');
+
+    expect(inProgress.status).toBe('in_progress');
+    expect(review.status).toBe('review');
+  });
+
+  it('requires a human or review tool to approve review completion', () => {
+    const service = createInMemoryKanbanService();
+    const project = createProject(service);
+    const task = service.createTask({ actor: human, projectId: project.id, title: 'Approve me', status: 'in_progress' });
+    service.recordVerification(agent, task.id, 'Verified', ['npm test passed']);
+    service.requestReview(agent, task.id, 'Ready for review');
+
+    expect(() => service.completeTask(agent, task.id, 'Finished')).toThrow(DomainValidationError);
+    expect(service.completeTask(human, task.id, 'Approved').status).toBe('done');
   });
 });

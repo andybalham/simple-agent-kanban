@@ -23,6 +23,16 @@ export const taskStatuses = [
 
 export type TaskStatus = (typeof taskStatuses)[number];
 
+export const allowedTaskStatusTransitions = {
+  backlog: ['ready', 'blocked', 'archived'],
+  ready: ['in_progress', 'blocked', 'archived'],
+  in_progress: ['ready', 'blocked', 'review', 'archived'],
+  blocked: ['ready', 'in_progress', 'archived'],
+  review: ['in_progress', 'archived'],
+  done: ['archived'],
+  archived: [],
+} satisfies Record<TaskStatus, TaskStatus[]>;
+
 /**
  * Most board queries should hide archived tasks unless the caller is explicitly
  * asking for history. Splitting uses archive/supersede behavior rather than a

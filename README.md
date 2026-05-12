@@ -91,6 +91,18 @@ Core rules:
 - MCP responses should be structured for agents, not shaped for the UI.
 - Significant mutations should write immutable activity events.
 
+Task status transitions are intentionally constrained so agents cannot skip the normal workflow:
+
+- `backlog` -> `ready`, `blocked`, `archived`
+- `ready` -> `in_progress`, `blocked`, `archived`
+- `in_progress` -> `ready`, `blocked`, `review`, `archived`
+- `blocked` -> `ready`, `in_progress`, `archived`
+- `review` -> `in_progress`, `archived`
+- `done` -> `archived`
+- `archived` is terminal.
+
+Agents should claim ready work, move it to `in_progress`, record artifacts and verification, then call `request_review`. The `review` -> `done` approval is reserved for a human actor or the configured review tool actor (`{"type":"system","id":"review-tool"}`) through `complete_task`; generic status updates cannot move tasks to `done`.
+
 ## Local Setup
 
 Install dependencies:

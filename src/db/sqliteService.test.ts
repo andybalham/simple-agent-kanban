@@ -9,6 +9,7 @@ import { createSqliteKanbanService, type SqliteKanbanService } from './sqliteSer
 
 const human: Actor = { type: 'human', id: 'human' };
 const agent: Actor = { type: 'agent', id: 'agent-a' };
+const reviewTool: Actor = { type: 'system', id: 'review-tool' };
 
 function createProject(service: LocalAgentKanbanService, repoPath = mkdtempSync(join(tmpdir(), 'local-agent-kanban-repo-'))) {
   return service.createProject({ actor: human, name: 'SQLite Workspace', description: 'Durable work', repoPath });
@@ -40,7 +41,9 @@ describe('SQLite-backed domain service', () => {
       const claim = service.claimTask(agent.id, task.id, 60, new Date('2026-05-08T10:00:00.000Z'));
       service.recordArtifact(agent, task.id, 'file', 'src/db/sqliteService.ts');
       service.recordVerification(agent, task.id, 'Checked persistence', ['npm run test passed']);
-      service.completeTask(agent, task.id, 'Finished persistence check');
+      service.updateTaskStatus(agent, task.id, 'in_progress');
+      service.requestReview(agent, task.id, 'Ready for durable review');
+      service.completeTask(reviewTool, task.id, 'Finished persistence check');
       service.close();
       service = null;
 
@@ -214,7 +217,10 @@ describe('SQLite-backed domain service', () => {
     expect(blocked.dependencyStatus).toBe('blocked_by_tasks');
     expect(() => service.claimTask(agent.id, blocked.id)).toThrow(DomainValidationError);
 
-    service.completeTask(agent, prerequisite.id, 'Done', ['sqlite test passed']);
+    service.updateTaskStatus(agent, prerequisite.id, 'in_progress');
+    service.recordVerification(agent, prerequisite.id, 'Verified', ['sqlite test passed']);
+    service.requestReview(agent, prerequisite.id, 'Ready for prerequisite approval');
+    service.completeTask(human, prerequisite.id, 'Approved');
     const claim = service.claimTask(agent.id, blocked.id, 60, new Date('2026-05-08T10:00:00.000Z'));
     expect(() => service.claimTask('agent-b', blocked.id, 60, new Date('2026-05-08T10:00:30.000Z'))).toThrow(
       DomainValidationError,
@@ -233,6 +239,20 @@ describe('SQLite-backed domain service', () => {
     expect(split.replacementTasks).toHaveLength(2);
     expect(split.replacementTasks.every((task) => task.needsGrooming === false)).toBe(true);
     expect(() => service.updateTaskStatus(human, split.replacementTasks[0].id, 'done')).toThrow(DomainValidationError);
+    expect(() => service.updateTaskStatus(agent, split.replacementTasks[0].id, 'review')).toThrow(DomainValidationError);
+    service.close();
+  });
+
+  it('requires review approval before durable completion', () => {
+    const service = createSqliteKanbanService(':memory:');
+    const project = createProject(service);
+    const task = service.createTask({ actor: human, projectId: project.id, title: 'Approve durable task', status: 'in_progress' });
+
+    service.recordVerification(agent, task.id, 'Verified', ['npm test passed']);
+    service.requestReview(agent, task.id, 'Ready for approval');
+
+    expect(() => service.completeTask(agent, task.id, 'Agent cannot approve')).toThrow(DomainValidationError);
+    expect(service.completeTask(reviewTool, task.id, 'Review tool approved').status).toBe('done');
     service.close();
   });
 });

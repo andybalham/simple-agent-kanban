@@ -138,6 +138,18 @@ Task statuses:
 - `done`
 - `archived`
 
+Allowed status transitions:
+
+- `backlog` -> `ready`, `blocked`, `archived`
+- `ready` -> `in_progress`, `blocked`, `archived`
+- `in_progress` -> `ready`, `blocked`, `review`, `archived`
+- `blocked` -> `ready`, `in_progress`, `archived`
+- `review` -> `in_progress`, `archived`
+- `done` -> `archived`
+- `archived` is terminal.
+
+The `review` -> `done` transition is not available through generic status updates. Completion must use the approval workflow, requires summary and verification evidence, and may only be approved by a human actor or the configured review tool actor.
+
 Task priorities:
 
 - `low`
@@ -326,7 +338,9 @@ Important MCP behavior:
 - `update_task_dependencies` must validate same-project dependencies, reject cycles, and write dependency events.
 - `split_task` must require a reason and at least two replacement tasks.
 - `split_task` must require dependency handling instructions when the original task has prerequisites or dependents.
-- `complete_task` must require a summary and verification evidence.
+- `update_task_status` must enforce the allowed transition graph and must not be able to move a task to `done`.
+- `request_review` moves only eligible work into `review`; agents should use it after work reaches `in_progress`.
+- `complete_task` must require `review` status, a summary, verification evidence, and approval from a human actor or the configured review tool actor.
 - Task status changes, dependency changes, notes, artifacts, verification, claim changes, and splits must write events.
 
 ## HTTP API Requirements

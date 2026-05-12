@@ -4,6 +4,18 @@ This guide shows how to prompt an MCP-capable LLM to use the `local-agent-kanban
 
 The examples are written for a human who is chatting with an LLM that can call MCP tools. They are not direct JSON tool-call scripts. Keep the returned IDs from each step and substitute them into later prompts where placeholders such as `<PROJECT_ID>`, `<TASK_ID>`, and `<CLAIM_ID>` appear.
 
+Agents must follow the task status workflow instead of jumping directly to completion:
+
+- `backlog` -> `ready`, `blocked`, `archived`
+- `ready` -> `in_progress`, `blocked`, `archived`
+- `in_progress` -> `ready`, `blocked`, `review`, `archived`
+- `blocked` -> `ready`, `in_progress`, `archived`
+- `review` -> `in_progress`, `archived`
+- `done` -> `archived`
+- `archived` is terminal.
+
+Use `update_task_status` for ordinary allowed moves, `request_review` when work is ready for inspection, and `complete_task` only for human or configured review-tool approval of `review` -> `done`. Agent actors should not call `complete_task` to approve their own work.
+
 ## Prerequisites
 
 Before using these prompts:
@@ -207,7 +219,7 @@ You are agent prompt-demo-agent and you hold claim <CLAIM_ID> on task <TASK_ID>.
 
 Heartbeat the claim for another 30 minutes.
 
-Then record a task note saying what you inspected or changed. If files were changed, record each changed path as a file artifact. If commands were run, record each command as a test, build, or lint artifact with pass/fail metadata.
+Move the task to in_progress if it is still ready. Then record a task note saying what you inspected or changed. If files were changed, record each changed path as a file artifact. If commands were run, record each command as a test, build, or lint artifact with pass/fail metadata.
 
 Do not complete the task yet. Return the updated claim expiration and a short progress summary.
 ```
@@ -215,6 +227,7 @@ Do not complete the task yet. Return the updated claim expiration and a short pr
 Expected MCP behavior:
 
 - Call `heartbeat_claim`.
+- Call `update_task_status` with `in_progress` if the task is still `ready`.
 - Call `add_task_note`.
 - Call `record_artifact` for each changed file or command result.
 
@@ -248,12 +261,12 @@ Expected result:
 - The task appears in review-oriented UI/API views.
 - The review summary is recorded as task activity.
 
-### Prompt 7: Complete Work With Evidence
+### Prompt 7: Human Or Review Tool Approval
 
 ```text
-You are agent prompt-demo-agent.
+You are approving reviewed work as the human operator or configured review tool.
 
-Complete task <TASK_ID>.
+Complete reviewed task <TASK_ID>.
 
 Use this completion summary:
 Completed the task and verified the expected behavior for the prompt demo workflow.
@@ -268,7 +281,7 @@ After completion, list the task and confirm it is done.
 
 Expected MCP behavior:
 
-- Call `complete_task` with evidence.
+- Call `complete_task` with evidence using a human actor, or a system actor with id `review-tool`.
 - Call `list_tasks`.
 
 Expected result:
@@ -313,8 +326,8 @@ Expected result:
 - Ask the LLM to report which MCP tools it used if you want an auditable trace.
 - Use `list_tasks` after mutations when you want the LLM to confirm current state, dependency status, claimability, or completion status.
 - Use `heartbeat_claim` during long-running work so the claim lease does not expire.
-- Use `record_verification` or `complete_task` with evidence before marking work complete. Completion requires a summary and verification evidence.
-- Use `request_review` when a human should inspect work before completion.
+- Use `record_verification` before requesting review, or provide verification evidence during approval. Completion requires `review` status, a summary, verification evidence, and a human or configured review-tool actor.
+- Use `request_review` when an agent has finished work and a human or review tool should inspect it before completion.
 
 ## Cleanup Prompt
 

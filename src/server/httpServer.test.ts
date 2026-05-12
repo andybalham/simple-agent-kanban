@@ -68,9 +68,17 @@ describe('HTTP API workflow', () => {
       summary: 'HTTP route test',
       evidence: ['Vitest HTTP workflow passed'],
     });
+    await api(baseUrl, 'PATCH', `/api/tasks/${taskId}/status`, {
+      actor: agent,
+      status: 'in_progress',
+    });
+    await api(baseUrl, 'POST', `/api/tasks/${taskId}/review`, {
+      actor: agent,
+      summary: 'Ready for HTTP approval',
+    });
 
     const completed = await api(baseUrl, 'POST', `/api/tasks/${taskId}/complete`, {
-      actor: agent,
+      actor: human,
       summary: 'Finished through HTTP',
     });
     expect(objectField(completed, 'task').status).toBe('done');
@@ -106,6 +114,13 @@ describe('HTTP API workflow', () => {
     });
     expect(rejected.status).toBe(400);
     expect((await rejected.json()).error.code).toBe('completion_requires_complete_task');
+
+    const skipped = await rawApi(baseUrl, 'PATCH', `/api/tasks/${taskId}/status`, {
+      actor: agent,
+      status: 'review',
+    });
+    expect(skipped.status).toBe(400);
+    expect((await skipped.json()).error.code).toBe('invalid_status_transition');
 
     const claim = await api(baseUrl, 'POST', `/api/tasks/${taskId}/claims`, {
       agentId: agent.id,

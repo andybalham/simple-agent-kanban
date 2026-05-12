@@ -115,7 +115,11 @@ export function createKanbanMcpServer(service: LocalAgentKanbanService): McpServ
     return { claimId: claim.id, released: true };
   });
 
-  registerWorkflowTool(server, 'update_task_status', 'Move a task through non-completion board statuses.', (input) =>
+  registerWorkflowTool(
+    server,
+    'update_task_status',
+    'Move a task through allowed non-completion board statuses: backlog->ready/blocked/archived, ready->in_progress/blocked/archived, in_progress->ready/blocked/review/archived, blocked->ready/in_progress/archived, review->in_progress/archived, done->archived. Use request_review for in_progress->review and complete_task only for review approval.',
+    (input) =>
     taskResult(service.updateTaskStatus(input.actor, input.taskId, input.status)),
   );
 
@@ -134,11 +138,11 @@ export function createKanbanMcpServer(service: LocalAgentKanbanService): McpServ
     return { verificationId: verification.id };
   });
 
-  registerWorkflowTool(server, 'request_review', 'Move a task into review with an agent summary.', (input) =>
+  registerWorkflowTool(server, 'request_review', 'Move an in-progress task into review with an agent summary for human or review-tool approval.', (input) =>
     taskResult(service.requestReview(input.actor, input.taskId, input.summary)),
   );
 
-  registerWorkflowTool(server, 'complete_task', 'Complete a task with summary and verification evidence.', (input) => {
+  registerWorkflowTool(server, 'complete_task', 'Approve a reviewed task as done. Only actor.type=human or actor.type=system with actor.id=review-tool may approve review->done, and completion requires a summary plus recorded or inline verification evidence.', (input) => {
     const task = service.completeTask(input.actor, input.taskId, input.summary, input.evidence);
     return {
       ...taskResult(task),

@@ -14,6 +14,7 @@ import {
   type TaskStatus,
   type TaskVerification,
   type TaskWithRelations,
+  allowedTaskStatusTransitions,
 } from './domain.ts';
 import type {
   CreateProjectInput,
@@ -498,6 +499,7 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
   requestReview(actor: Actor, taskId: string, summary: string): TaskWithRelations {
     // A review request is both a note for humans and a status move. The explicit
     // review event makes it easy for the later review queue to find these tasks.
+    this.validateStatusTransition(this.requireTask(taskId).status, 'review');
     this.addTaskNote(actor, taskId, `Review requested: ${summary}`);
     const task = this.updateTaskStatus(actor, taskId, 'review');
     this.writeEvent(actor, task.projectId, taskId, 'task.review_requested', nonEmptyTrimmedString.parse(summary), {});
@@ -507,6 +509,12 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
   completeTask(actor: Actor, taskId: string, summary: string, evidence?: string[]): TaskWithRelations {
     const task = this.requireTask(taskId);
     const parsedSummary = nonEmptyTrimmedString.parse(summary);
+    invariant(task.status === 'review', 'completion_requires_review_status', 'Only tasks in review can be completed.');
+    invariant(
+      this.canApproveCompletion(actor),
+      'completion_requires_review_approval',
+      'Only a human or the configured review tool can approve a task from review to done.',
+    );
     if (evidence !== undefined) {
       // Inline evidence is convenient for agents that finish and verify in one
       // tool call. Agents can also record verification first, then complete.
@@ -685,12 +693,23 @@ export class InMemoryKanbanService implements LocalAgentKanbanService {
   }
 
   private validateStatusTransition(fromStatus: TaskStatus, toStatus: TaskStatus): void {
-    // Archived is terminal for active board workflows. Historical resurrection
-    // would need a deliberate future workflow so dependencies can be checked.
-    invariant(fromStatus !== 'archived' || toStatus === 'archived', 'archived_status_is_terminal', 'Archived tasks cannot return to the active board.');
+    if (fromStatus === toStatus) {
+      return;
+    }
     // Done is special because it requires evidence. Callers must use completeTask
     // instead of a generic status update.
     invariant(toStatus !== 'done', 'completion_requires_complete_task', 'Use completeTask so completion includes a summary and verification evidence.');
+    const allowedNextStatuses: readonly TaskStatus[] = allowedTaskStatusTransitions[fromStatus];
+    invariant(
+      allowedNextStatuses.includes(toStatus),
+      'invalid_status_transition',
+      `Task status cannot move from ${fromStatus} to ${toStatus}.`,
+      [`Allowed next statuses from ${fromStatus}: ${allowedNextStatuses.join(', ') || 'none'}.`],
+    );
+  }
+
+  private canApproveCompletion(actor: Actor): boolean {
+    return actor.type === 'human' || (actor.type === 'system' && actor.id === 'review-tool');
   }
 
   private touchTask(taskId: string, changes: Partial<Task>): Task {
