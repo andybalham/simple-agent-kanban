@@ -215,6 +215,7 @@ export function App() {
   const [createForm, setCreateForm] = useState<TaskFormState>(emptyTaskForm);
   const [editForm, setEditForm] = useState<TaskFormState>(emptyTaskForm);
   const [completionForm, setCompletionForm] = useState<CompletionFormState>(emptyCompletionForm);
+  const [shouldFocusCompletionSummary, setShouldFocusCompletionSummary] = useState(false);
   const [boardSearchFilters, setBoardSearchFilters] = useState<BoardSearchFilters>(emptyBoardSearchFilters);
   const [draftBoardSearchQuery, setDraftBoardSearchQuery] = useState(emptyBoardSearchFilters.query);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -419,6 +420,7 @@ export function App() {
     }
     setEditForm(taskToForm(selectedTask));
     setCompletionForm(emptyCompletionForm);
+    setShouldFocusCompletionSummary(false);
   }, [selectedTask]);
 
   async function loadTaskDetail(taskId: string) {
@@ -536,7 +538,9 @@ export function App() {
   async function completeTask(event: FormEvent) {
     event.preventDefault();
     pauseAutoRefresh();
-    if (!selectedTaskId || !completionForm.summary.trim()) {
+    const evidence = splitLines(completionForm.evidence);
+    const hasRecordedVerificationEvidence = (detail?.verifications.length ?? 0) > 0;
+    if (!selectedTaskId || !completionForm.summary.trim() || (evidence.length === 0 && !hasRecordedVerificationEvidence)) {
       return;
     }
     await mutate(async () => {
@@ -545,10 +549,11 @@ export function App() {
         body: JSON.stringify({
           actor: humanActor,
           summary: completionForm.summary.trim(),
-          evidence: splitLines(completionForm.evidence),
+          ...(evidence.length > 0 ? { evidence } : {}),
         }),
       });
       setCompletionForm(emptyCompletionForm);
+      setShouldFocusCompletionSummary(false);
       await refreshBoard(selectedProjectId, boardSearchFilters);
       await loadProjectEvents(selectedProjectId);
       await loadTaskDetail(selectedTaskId);
@@ -620,6 +625,12 @@ export function App() {
     setSelectedTaskId(taskId);
     setSidePanelMode('detail');
     setIsSidePanelOpen(true);
+  }
+
+  function openCompletionPanel(taskId: string) {
+    openTaskPanel(taskId);
+    setCompletionForm(emptyCompletionForm);
+    setShouldFocusCompletionSummary(true);
   }
 
   function selectProject(projectId: string) {
@@ -852,6 +863,7 @@ export function App() {
                             staleClaims={staleClaimsByTask.get(task.id) ?? []}
                             isSelected={task.id === selectedTaskId}
                             onSelect={() => openTaskPanel(task.id)}
+                            onCompleteSelect={() => openCompletionPanel(task.id)}
                             onMove={(status) => void moveTask(task, status)}
                           />
                         ))}
@@ -946,8 +958,16 @@ export function App() {
                         </div>
                       ))}
                     </div>
-                    {selectedTask.status !== 'done' && selectedTask.status !== 'archived' && (
-                      <CompletionForm form={completionForm} disabled={isSaving} onChange={updateCompletionForm} onSubmit={completeTask} />
+                    {selectedTask.status === 'review' && (
+                      <CompletionForm
+                        form={completionForm}
+                        disabled={isSaving}
+                        hasRecordedVerificationEvidence={(detail?.verifications.length ?? 0) > 0}
+                        shouldFocusSummary={shouldFocusCompletionSummary}
+                        onChange={updateCompletionForm}
+                        onFocusedSummary={() => setShouldFocusCompletionSummary(false)}
+                        onSubmit={completeTask}
+                      />
                     )}
                     <TaskEvidence detail={detail} />
                   </>
@@ -1343,12 +1363,14 @@ function TaskCard({
   staleClaims,
   isSelected,
   onSelect,
+  onCompleteSelect,
   onMove,
 }: {
   task: Task;
   staleClaims: TaskClaim[];
   isSelected: boolean;
   onSelect: () => void;
+  onCompleteSelect: () => void;
   onMove: (status: TaskStatus) => void;
 }) {
   return (
@@ -1382,6 +1404,11 @@ function TaskCard({
           {task.status === 'done' && <option value="done">Done</option>}
         </select>
       </label>
+      {task.status === 'review' && (
+        <button type="button" className="task-card__complete" onClick={onCompleteSelect}>
+          Complete
+        </button>
+      )}
     </article>
   );
 }
@@ -1889,20 +1916,38 @@ function TaskForm({
 function CompletionForm({
   form,
   disabled,
+  hasRecordedVerificationEvidence,
+  shouldFocusSummary,
   onChange,
+  onFocusedSummary,
   onSubmit,
 }: {
   form: CompletionFormState;
   disabled: boolean;
+  hasRecordedVerificationEvidence: boolean;
+  shouldFocusSummary: boolean;
   onChange: (form: CompletionFormState) => void;
+  onFocusedSummary: () => void;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+  const evidenceLines = splitLines(form.evidence);
+  const canSubmit = form.summary.trim().length > 0 && (evidenceLines.length > 0 || hasRecordedVerificationEvidence);
+
+  useEffect(() => {
+    if (!shouldFocusSummary) {
+      return;
+    }
+    summaryRef.current?.focus();
+    onFocusedSummary();
+  }, [onFocusedSummary, shouldFocusSummary]);
+
   return (
     <form className="completion-form" onSubmit={onSubmit}>
-      <h3>Complete Task</h3>
+      <h3>Approve Done</h3>
       <label className="field">
         <span>Summary</span>
-        <textarea value={form.summary} onChange={(event) => onChange({ ...form, summary: event.target.value })} rows={3} />
+        <textarea ref={summaryRef} value={form.summary} onChange={(event) => onChange({ ...form, summary: event.target.value })} rows={3} />
       </label>
       <label className="field">
         <span>Verification</span>
@@ -1913,8 +1958,8 @@ function CompletionForm({
           rows={3}
         />
       </label>
-      <button type="submit" disabled={disabled || !form.summary.trim()}>
-        Complete
+      <button type="submit" disabled={disabled || !canSubmit}>
+        Approve Done
       </button>
     </form>
   );

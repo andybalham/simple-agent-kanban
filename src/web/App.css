@@ -803,6 +803,21 @@ textarea {
   padding: 9px 11px 11px;
 }
 
+.task-card__complete {
+  margin: 0 11px 11px;
+  border-color: #1d746c;
+  background: #217f76;
+  color: #ffffff;
+}
+
+.task-card__complete:hover,
+.task-card__complete:focus-visible {
+  border-color: #185f59;
+  background: #185f59;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(33, 127, 118, 0.22);
+}
+
 .side-panel {
   display: flex;
   min-height: 0;
